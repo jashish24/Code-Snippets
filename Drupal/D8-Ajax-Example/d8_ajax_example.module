@@ -1,0 +1,284 @@
+<?php
+
+/**
+ * @file
+ * Contains plusminuscode_custom.module.
+ */
+
+use Drupal\Core\Routing\RouteMatchInterface;
+use Drupal\Core\Access\AccessResult;
+use Drupal\Core\Entity\EntityInterface;
+use Drupal\Core\Url;
+use Drupal\Core\Link;
+use \Drupal\node\Entity\Node;
+
+/**
+ * Implements hook_help().
+ */
+function plusminuscode_custom_help($route_name, RouteMatchInterface $route_match) {
+  switch ($route_name) {
+    // Main module help for the plusminuscode_custom module.
+    case 'help.page.plusminuscode_custom':
+      $output = '';
+      $output .= '<h3>' . t('About') . '</h3>';
+      $output .= '<p>' . t('Custom customizations for Plus Minus Code') . '</p>';
+      return $output;
+
+    default:
+  }
+}
+/**
+ * Implements hook_form_alter().
+ */
+function plusminuscode_custom_form_alter(&$form, \Drupal\Core\Form\FormStateInterface $form_state, $form_id){
+  //throw new Exception('Oh no, an exception! ' . $form_id);
+  if ($form_id == 'contact_message_contact_us_form_form') {
+    $form['actions']['submit']['#value'] = t('Send');
+    $form['actions']['preview']['#access'] = FALSE;
+  }
+}
+
+/**
+ * Implements hook_entity_access().
+ */
+
+function plusminuscode_custom_entity_access(\Drupal\Core\Entity\EntityInterface $entity, $operation, \Drupal\Core\Session\AccountInterface $account) {
+  $entity_type = $entity -> getEntityTypeId();
+  $user = \Drupal::entityTypeManager() -> getStorage('user') -> load(\Drupal::currentUser() -> id());
+
+  //print_r($tentity -> get('field_attached_user') -> getValue());
+  //exit;
+  // @hasPermission: check, to not overwrite default permission system
+  // @hasPermission: view media permission can be assigned to roles to skip 'media' commerce flow of plusminuscode_custom(CFoPC)
+  // @operation: max access achieved using CFoPC is view a media
+  // @entity_type: currently applying only to media, can be used for other entity type also
+  if ($entity_type == 'media' && $operation == 'view' && !$user -> hasPermission('view media')) {
+    $entity_id = $entity -> id();
+    
+    //@todo - remove it later if not required
+    $roles = $user -> getRoles(TRUE); // TRUE, getting only unlocked roles (authenticated is a locked role)
+
+    $current_user_allowed_media = [];
+
+    if ($user -> hasField('field_user_media_access')) {
+      $user_media_list = $user -> field_user_media_access -> getValue();
+
+      foreach ($user_media_list as $key => $media_target_id) {
+        if (isset($media_target_id['target_id'])) {
+          $current_user_allowed_media[] = $media_target_id['target_id'];
+        }
+      }
+    }
+
+    if (in_array($entity_id, $current_user_allowed_media)) {
+      return AccessResult::allowed();
+    }
+  }
+
+  return AccessResult::neutral();
+}
+
+/**
+ * Implements hook_ENTITY_TYPE_update().
+ */
+
+function plusminuscode_custom_commerce_order_update(EntityInterface $entity) {
+  $order_state = $entity -> getState() -> value;
+
+  if ($order_state == 'completed') {
+    $order_update_status = update_product_status($entity);
+    $order_id = $entity -> order_id -> value;
+    
+    if (($order_update_status['has_episode']['status'] == 1 && $order_update_status['has_episode']['completed'] == 1) || ($order_update_status['has_season']['status'] == 1 && $order_update_status['has_season']['completed'] == 1)) {
+      //Displaying message on successful order completion
+      $path = '/my-episodes';
+      $url = Url::fromUri('internal:' . $path);
+      $link = Link::fromTextAndUrl(t('here'), $url);
+      $link = $link -> toRenderable();
+      $link['#attributes'] = ['class' => ['view-episodes']];
+      $output = render($link);
+      drupal_set_message(t('Please visit @link to view your purchases.', ['@link' => $output]));
+    }
+    else if ($order_update_status['has_episode']['status'] == 1 || $order_update_status['has_season']['status'] == 1) {
+      drupal_set_message(t('There was an error fulfilling delivery of video products. Please note your order id: :order_id and contact site administrator.', [':order_id' => $order_id]), 'error');
+    }
+    
+    if ($order_update_status['has_child_account']['status'] == 1 && $order_update_status['has_child_account']['completed'] == 1) {
+      drupal_set_message(t('Updated child account counts for your profile.'));
+    }
+    else if ($order_update_status['has_child_account']['status'] == 1) {
+      drupal_set_message(t('There was an error fulfilling delivery of child account product. Please note your order id: :order_id and contact site administrator.', [':order_id' => $order_id]), 'error');
+    }
+  }
+}
+
+/**
+ * Function to update user content access based on products in the order
+ * @param int $order_id
+ *   (required) Order id of the just completed order.
+ * @param int $order_customer_id
+ *   (required) User uid who is related to this order as customer.
+ * @param string $order_state
+ *   (optional) Order state at which this event has to be called
+ * @return boolean
+ *   Whether user updating user access successful
+ */
+
+function update_product_status($order_entity) {
+  $order_state = $order_entity -> getState() -> value;
+  $order_customer_id = $order_entity -> getCustomerId();
+  $order_id = $order_entity -> order_id -> value;
+  $order_items = $order_entity -> get('order_items') -> getValue();
+  
+  if (!is_numeric($order_id) || !is_numeric($order_customer_id) || $order_state == 'draft') {
+    return false;
+  }
+
+  $db = \Drupal::database();
+
+  $order_product_content_access_ids = [];
+  
+  // contains update status of each intangible product
+  $order_update_status = [
+    'has_episode' => [
+      'status' => 0,
+      'completed' => 0,
+    ],
+    'has_season' => [
+      'status' => 0,
+      'completed' => 0,
+    ],
+    'has_child_account' => [
+      'status' => 0,
+      'completed' => 0,
+    ],
+  ];
+  
+  //Loading customer object to whom this order is attached to
+  $customer = \Drupal\user\Entity\User::load($order_customer_id);
+  
+  //Loading using commerce available functions will take at least three subsequent object loads, hence query
+  $query = $db -> select('commerce_order_item','coi');
+  $query -> join('commerce_product_variation_field_data', 'cpvd', 'cpvd.variation_id = coi.purchased_entity');
+  $query -> condition('coi.order_id', $order_id)
+    -> fields('cpvd', ['product_id'])
+    -> fields('coi', ['quantity']);
+
+  $order_product_ids = $query -> execute() -> fetchAll();
+
+  foreach ($order_product_ids as $key => $raw_product) {
+    $product_id = $raw_product -> product_id;
+    $product_quantity = $raw_product -> quantity;
+    
+    //@todo - can be joined to @order_product_ids query if performance is getting affected 
+    $product = \Drupal\commerce_product\Entity\Product::load($product_id); // commerce product API
+    $product_type_raw = $product -> get('type') -> getValue();
+    $product_type = isset($product_type_raw[0]) ? $product_type_raw[0]['target_id'] : 'default';
+    
+    // Episode product access
+    if ($product -> hasField('field_episode_media')) {
+      $order_update_status['has_episode']['status'] = 1;
+      $order_product_target_ids = $product -> get('field_episode_media') -> getValue();
+
+      //(Product Episode -> Media ID)
+      foreach ($order_product_target_ids as $key => $target_id) {
+        $order_product_content_access_ids['media'][]['target_id'] = $target_id['target_id'];
+      }
+    }
+    
+    // Season product access
+    if ($product -> hasField('field_season_episodes_tags')) {
+      $order_update_status['has_season']['status'] = 1;
+      $order_product_season_tid = $product -> get('field_season_episodes_tags') -> getValue();
+
+      // Load all media attached to the season bought by user
+      $media = \Drupal::entityTypeManager() -> getStorage('media') -> loadByProperties([
+        'field_season' => $order_product_season_tid[0]['target_id'],
+      ]);
+
+      //(Product Season -> Media IDs)
+      foreach ($media as $key => $single_media) {
+        $order_product_content_access_ids['media'][]['target_id'] = $single_media -> mid -> value;
+      }
+    }
+    
+    // Child account product access
+    if ($product_type == 'child_account' && $customer -> hasField('field_child_account_left')) {
+      $order_update_status['has_child_account']['status'] = 1;
+      try {
+        $number_of_child_accounts = $customer -> get('field_child_account_left') -> getValue();
+        $product_quantity_int = (int) $product_quantity;
+        $current_child_num = isset($number_of_child_accounts[0]) ? $number_of_child_accounts[0]['value'] : 0;
+        $number_of_child_accounts[0]['value'] = (int) $current_child_num + $product_quantity_int;
+        // updating child accounts counts
+        $customer -> set('field_child_account_left', $number_of_child_accounts);
+        // saving user for permanent change
+        $customer -> save();
+        
+        $order_update_status['has_child_account']['completed'] = 1;
+      }
+      catch (Exception $e) {
+        $order_update_status['has_child_account']['completed'] = 0;
+        \Drupal::logger('plusminuscode_custom') -> error('Child account access failure => {Order ID: :order_id}, {Message: :message}', [
+          ':order_id' => $order_id,
+          ':message' => serialize($e),
+        ]);
+      }
+    }
+  }
+
+  if ($customer -> hasField('field_user_media_access') && isset($order_product_content_access_ids['media'])) {
+    try {
+      // getting media access field value
+      $customer_media_access = $customer -> get('field_user_media_access') -> getValue();
+      // updating media access raw value
+      // @todo - remove duplicate ids after merging
+      $customer_media_access = array_merge($customer_media_access, $order_product_content_access_ids['media']);
+      // updating media access field value
+      $customer -> set('field_user_media_access', $customer_media_access);
+      // saving user for permanent change
+      $customer -> save();
+
+      if ($order_update_status['has_episode']['status'] == 1) {
+        $order_update_status['has_episode']['completed'] = 1;
+      }
+      
+      if ($order_update_status['has_season']['status'] == 1) {
+        $order_update_status['has_season']['completed'] = 1;
+      }
+    }
+    catch (Exception $e) {
+      $order_update_status['has_episode']['completed'] = 0;
+      $order_update_status['has_season']['completed'] = 0;
+      \Drupal::logger('plusminuscode_custom') -> error('User Media access failure => {Order ID: :order_id}, {Message: :message}', [
+        ':order_id' => $order_id,
+        ':message' => serialize($e),
+      ]);
+    }
+  }
+  
+  return $order_update_status;
+}
+
+/**
+ * Implements hook_ENTITY_TYPE_insert
+ */
+
+function plusminuscode_custom_user_insert(Drupal\Core\Entity\EntityInterface $entity) {
+  // Create node object with attached file.
+  $progress_uid = $entity -> id();
+  $first_name_raw = $entity -> get('field_first_name') -> getValue();
+  $first_name = isset($first_name_raw[0]) ? $first_name_raw[0]['value'] : t('No First Name');
+
+  $progress_node = Node::create([
+    'type' => 'child_progress',
+    'title' => t('Progress Userid: :uid Name: :first_name', array(':uid' => $progress_uid, ':first_name' => $first_name)),
+    'field_attached_user' => [
+      0 => [
+        'target_id' => $progress_uid,
+      ],
+    ],
+  ]);
+  
+  $progress_node -> save();
+}

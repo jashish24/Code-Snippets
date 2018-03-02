@@ -1,0 +1,15 @@
+plusminuscode_custom.addchildform:
+  path: '/user/register/child'
+  defaults:
+    _title: 'Add Child'
+    _form: '\Drupal\plusminuscode_custom\Form\AddChildForm'
+  requirements:
+    _custom_access: '\Drupal\plusminuscode_custom\Form\AddChildForm::access'
+
+plusminuscode_custom.submitQuiz:
+  path: '/quiz/generic/callback'
+  defaults:
+    _title: 'Quiz Ajax'
+    _controller: '\Drupal\plusminuscode_custom\Controller\QuizAjax::changeQuizStatus'
+  requirements:
+    _custom_access: '\Drupal\plusminuscode_custom\Controller\QuizAjax::access'
