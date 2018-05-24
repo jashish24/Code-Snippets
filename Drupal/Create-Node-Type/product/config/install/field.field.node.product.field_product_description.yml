@@ -1,0 +1,21 @@
+langcode: en
+status: true
+dependencies:
+  config:
+    - field.storage.node.field_product_description
+    - node.type.product
+  module:
+    - text
+id: node.field_product_description
+field_name: field_product_description
+entity_type: node
+bundle: product
+label: Product Description
+description: 'A brief description of the product.'
+required: true
+translatable: true
+default_value: {  }
+default_value_callback: ''
+settings:
+  display_summary: false
+field_type: text_with_summary

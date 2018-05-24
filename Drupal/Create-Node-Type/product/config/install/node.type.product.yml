@@ -1,0 +1,13 @@
+langcode: en
+status: true
+dependencies: 
+  enforced: 
+    module: 
+      - product
+name: 'Product'
+type: 'product'
+description: 'Content type that can be used to showcase product details and their purchase links.'
+help: ''
+new_revision: true
+preview_mode: 1
+display_submitted: true

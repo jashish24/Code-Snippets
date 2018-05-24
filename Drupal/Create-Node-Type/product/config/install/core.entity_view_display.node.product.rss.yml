@@ -1,0 +1,23 @@
+langcode: en
+status: true
+dependencies:
+  config:
+    - core.entity_view_mode.node.rss
+    - field.field.node.product.field_product_description
+    - field.field.node.product.field_product_image
+    - field.field.node.product.field_purchase_link
+    - node.type.product
+  module:
+    - user
+id: node.product.rss
+targetEntityType: node
+bundle: product
+mode: rss
+content:
+  links:
+    weight: 100
+    region: content
+hidden:
+  field_product_description: true
+  field_product_image: true
+  field_purchase_link: true
