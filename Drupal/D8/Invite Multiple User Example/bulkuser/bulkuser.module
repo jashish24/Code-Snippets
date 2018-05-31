@@ -1,0 +1,15 @@
+<?php
+
+/**
+ * @file
+ * This module holds functions of Bulk User Module.
+ */
+
+use Drupal\Core\Form\FormStateInterface;
+/**
+ *
+ */
+function bulkuser_form_user_form_alter(&$form, FormStateInterface $form_state, $form_id) {
+  $form['#attached']['library'][] = 'bulkuser/bulkuser.tree';
+  return $form;
+}

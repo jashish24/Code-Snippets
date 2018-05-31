@@ -1,0 +1,1410 @@
+<?php
+
+/**
+ * @file
+ * Contains example_custom.module.
+ */
+
+use Drupal\Core\Routing\RouteMatchInterface;
+use Drupal\Core\Access\AccessResult;
+use Drupal\Core\Entity\EntityInterface;
+use Drupal\Core\Url;
+use Drupal\Core\Link;
+use \Drupal\node\Entity\Node;
+use Drupal\Core\Form\FormStateInterface;
+use Symfony\Component\HttpFoundation\RedirectResponse;
+
+/**
+ * Implements hook_help().
+ */
+function example_custom_help($route_name, RouteMatchInterface $route_match) {
+  switch ($route_name) {
+    // Main module help for the example_custom module.
+    case 'help.page.example_custom':
+      $output = '';
+      $output .= '<h3>' . t('About') . '</h3>';
+      $output .= '<p>' . t('Custom customizations for Example') . '</p>';
+      return $output;
+
+    default:
+  }
+}
+/**
+ * Implements hook_form_alter().
+ */
+function example_custom_form_alter(&$form, \Drupal\Core\Form\FormStateInterface $form_state, $form_id) {
+
+  // Change Contact Us form submit text and remove Preview button
+  if ($form_id == 'contact_message_contact_us_form_form') {
+    $form['actions']['submit']['#value'] = t('Send');
+    $form['actions']['preview']['#access'] = FALSE;
+  }
+
+  // Disabling quantity and variation fields from the add to cart form for certain products based on the custom setting
+  if (strpos($form_id, 'commerce_order_item_add_to_cart_form_commerce_product_') !== FALSE) {
+    $product = $form_state -> getStorage();
+    $disable_quantity_status = 0;
+    $disable_variations_status = 0;
+
+    // Disabling quantity
+    if ($product['product'] -> hasField('field_disable_quantity')) {
+      $disable_quantity = $product['product'] -> get('field_disable_quantity') -> getValue();
+      $disable_quantity_status = isset($disable_quantity[0]) ? $disable_quantity[0]['value'] : 0;
+    }
+
+    // Disabling variations
+    if ($product['product'] -> hasField('field_disable_variations')) {
+      $disable_variations = $product['product'] -> get('field_disable_variations') -> getValue();
+      $disable_variations_status = isset($disable_variations[0]) ? $disable_variations[0]['value'] : 0;
+    }
+
+    if ($disable_quantity_status == 1) {
+      $form['purchased_entity']['#access'] = FALSE;
+    }
+
+    if ($disable_variations_status == 1) {
+      $form['quantity']['#access'] = FALSE;
+    }
+  }
+
+  // Restricting School users from deleting classes that has teacher or student attached to it
+  if ($form_id == 'profile_school_edit_form') {
+    $form['#validate'][] = 'profile_school_classroom_validate';
+  }
+
+  if (in_array($form_id, ['node_questions_group_edit_form', 'node_quiz_edit_form'])) {
+    // This will modify the node edit form IEF widget to change the edit link to a node/edit link instead of an ajax embeded form
+    // because IEF does not mix well with Field Collections 8.x-1.x. As stated in the module's documentation
+    // it is recommended to use Paragraphs module, so a migration to paragraphs might be necessary,
+    // (see https://www.drupal.org/project/paragraphs/issues/2897021 , https://www.mtech-llc.com/blog/ada-hernandez/migration-field-collection-d7-paragraphs-node-d8)
+    // or upgrade to field collection 8.x-3.x which is based on entity reference. That might work better with IEF...
+    $field_mapping = [
+      'node_questions_group_edit_form' => 'field_questions',
+      'node_quiz_edit_form' => 'field_quiz_questions',
+    ];
+    foreach($form[$field_mapping[$form_id]]['widget']['entities'] as $key => &$entity) {
+      if(is_numeric($key)) {
+        // Change Edit button with a target=_blank link to entity edit
+        $entity['actions']['ief_entity_edit'] = [
+          '#type' => 'link',
+          '#title' => t('Edit in new window'),
+          '#attributes' => ['class' => ['button']],
+          '#url' => $entity['#entity']->toUrl('edit-form', [
+            'attributes' => [ 'target' => '_blank' ],
+            // 'query' => \Drupal::destination()->getAsArray(),
+          ]),
+        ];
+      }
+    }
+  }
+
+  //Allow students to login using first password field of child profile
+  if ($form_id == 'user_login_form') {
+    $form['#validate'] = array_merge(['user_card_login'], $form['#validate']);
+  }
+}
+
+/**
+ * @param $form
+ * @param \Drupal\Core\Form\FormStateInterface $form_state
+ * @param $form_id
+ * bypass login for Students using Student Card
+ */
+function user_card_login(&$form, \Drupal\Core\Form\FormStateInterface $form_state) {
+  $form_values = $form_state -> getValues();
+
+  try {
+    // Validating first_password field and username only for child role user
+    $database = \Drupal::database();
+    $user_login_query = $database -> select('users_field_data', 'ufd');
+    $user_login_query -> join('profile', 'p', 'p.uid = ufd.uid');
+    $user_login_query -> join('user__roles', 'ur', 'ur.entity_id = ufd.uid');
+    $user_login_query -> join('profile__field_first_password', 'ffp', 'ffp.entity_id = p.profile_id');
+    $user_login_query -> condition('ufd.name', strip_tags($form_values['name']));
+    $user_login_query -> condition('ufd.status', 1);
+    $user_login_query -> condition('ur.roles_target_id', 'child');
+    $user_login_query -> condition('ffp.field_first_password_value', strip_tags($form_values['pass']));
+    $user_login_query -> fields('ufd', ['uid']);
+
+    $user_login = $user_login_query -> execute() -> fetchObject();
+
+    if ($user_login) {
+      $userid = $user_login -> uid;
+      $user = Drupal\user\Entity\User::load($userid);
+      // Login using function as Drupal login will not allow login
+      user_login_finalize($user);
+
+      // Redirecting to bypass any other validation from Drupal core otherwise whole login needs to be handled
+      $path = '/dashboard';
+      $response = new RedirectResponse($path, 301);
+      $response -> send();
+    }
+  }
+  catch (Exception $e) {
+    //print '<pre>'; print_r($e);
+  }
+}
+
+/**
+ * Function to check if a classroom being deleted by scholl does not
+ * have any child/student or teacher user attached to it
+ */
+
+function profile_school_classroom_validate($form, FormStateInterface &$form_state) {
+  try {
+    $form_values = $form_state -> getValues();
+    $current_user_id = \Drupal::currentUser() -> id();
+    $updated_classrooms = [];
+
+    // Loading classrooms of a school that has students
+    $school_student_classrooms_db = \Drupal::database();
+    $school_student_classrooms_query = $school_student_classrooms_db -> select('profile__field_classrooms', 'fc');
+    $school_student_classrooms_query -> join('profile', 'p', 'p.profile_id = fc.entity_id');
+    $school_student_classrooms_query -> join('profile__field_classroom', 'pfc', 'pfc.field_classroom_target_id = fc.field_classrooms_target_id');
+    $school_student_classrooms_query -> join('node_field_data', 'nfd', 'nfd.nid = fc.field_classrooms_target_id');
+    $school_student_classrooms_query -> addExpression('count(pfc.entity_id)', 'child_count');
+    $school_student_classrooms_query -> condition('fc.deleted', 0)
+      -> condition('p.uid', $current_user_id)
+      -> fields('fc', ['delta'])
+      -> fields('nfd', ['title'])
+      -> groupBy('fc.delta')
+      -> groupBy('nfd.title');
+
+    $school_student_classrooms = $school_student_classrooms_query -> execute() -> fetchAll();
+
+    // Loading classrooms of a school that has teachers
+    $school_teacher_classrooms_db = \Drupal::database();
+    $school_teacher_classrooms_query = $school_teacher_classrooms_db -> select('profile__field_classrooms', 'fc');
+    $school_teacher_classrooms_query -> join('profile', 'p', 'p.profile_id = fc.entity_id');
+    $school_teacher_classrooms_query -> join('profile__field_classrooms', 'fc1', 'fc1.field_classrooms_target_id = fc.field_classrooms_target_id');
+    $school_teacher_classrooms_query -> join('node_field_data', 'nfd', 'nfd.nid = fc.field_classrooms_target_id');
+    $school_teacher_classrooms_query -> addExpression('count(fc1.entity_id)', 'teacher_count');
+    $school_teacher_classrooms_query -> condition('fc.deleted', 0)
+      -> condition('p.uid', $current_user_id)
+      -> condition('fc1.bundle', 'teacher')
+      -> fields('fc', ['delta'])
+      -> fields('nfd', ['title'])
+      -> groupBy('fc.delta')
+      -> groupBy('nfd.title');
+
+    $school_teacher_classrooms = $school_teacher_classrooms_query -> execute() -> fetchAll();
+
+    // Array of classrooms that are being deleted
+    if (isset($form_values['field_classrooms']['entities'])) {
+      foreach ($form_values['field_classrooms']['entities'] as $key => $value) {
+        $updated_classrooms[] = $value['delta'];
+      }
+    }
+
+    if (!empty($school_student_classrooms)) {
+      foreach ($school_student_classrooms as $key => $classroom) {
+        // Check if any of the non-empty classroom is being deleted (has student)
+        if (!in_array($classroom -> delta, $updated_classrooms) && $classroom -> child_count > 0) {
+          $form_state -> setErrorByName('field_classrooms', t('You have students currently assigned to the @classtitle classroom. You have to remove this classroom from their profile first.', ['@classtitle' => $classroom -> title]));
+        }
+      }
+    }
+
+    if (!empty($school_teacher_classrooms)) {
+      foreach ($school_teacher_classrooms as $key => $classroom) {
+        // Check if any of the non-empty classroom is being deleted (has teacher)
+        if (!in_array($classroom -> delta, $updated_classrooms) && $classroom -> teacher_count > 0) {
+          $form_state -> setErrorByName('field_classrooms', t('You have teachers currently assigned to the @classtitle classroom. You have to remove this classroom from their profile first.', ['@classtitle' => $classroom -> title]));
+        }
+      }
+    }
+  }
+  catch (Exception $e) {
+    //@todo - write watchdog if required
+  }
+}
+
+/**
+ * Implements hook_entity_access().
+ */
+
+function example_custom_entity_access(\Drupal\Core\Entity\EntityInterface $entity, $operation, \Drupal\Core\Session\AccountInterface $account) {
+  $user = \Drupal::entityTypeManager() -> getStorage('user') -> load(\Drupal::currentUser() -> id());
+  $entity_type = $entity -> getEntityTypeId();
+
+  // @hasPermission: check, to not overwrite default permission system
+  // @hasPermission: view media permission can be assigned to roles to skip 'media' commerce flow of example_custom(CFoPC)
+  // @operation: max access achieved using CFoPC is view a media
+  // @entity_type: currently applying only to media, can be used for other entity type also
+  if ($entity_type == 'media' && $operation == 'view' && !$user -> hasPermission('view media')) {
+    $entity_id = $entity -> id();
+
+    //@todo - remove it later if not required
+    $roles = $user -> getRoles(TRUE); // TRUE, getting only unlocked roles (authenticated is a locked role)
+
+    $current_user_allowed_media = [];
+
+    if ($user -> hasField('field_user_media_access')) {
+      $user_media_list = $user -> field_user_media_access -> getValue();
+
+      // Preparing array of user media list from the user object
+      foreach ($user_media_list as $key => $media_target_id) {
+        if (isset($media_target_id['target_id'])) {
+          $current_user_allowed_media[] = $media_target_id['target_id'];
+        }
+      }
+    }
+
+    //Checking if current media entity is present in user accessible media list
+    if (in_array($entity_id, $current_user_allowed_media)) {
+      return AccessResult::allowed();
+    }
+  }
+
+  // Check if the entity is of type 'node' before applying any access restriction
+  if (($entity instanceof \Drupal\node\NodeInterface) and ($operation == 'view')) {
+    $bundle = $entity -> bundle();
+
+    // Custom access control based on what the user has purchased
+    if (in_array($bundle, ['video'])) {
+      $entity_id = $entity->id();
+      $current_user_allowed_media = [];
+
+      if ($user->hasField('field_user_media_access')) {
+        $user_media_list = $user->field_user_media_access->getValue();
+
+        // Preparing video entity array accessible by current user
+        foreach ($user_media_list as $key => $media_target_id) {
+          if (isset($media_target_id['target_id'])) {
+            $current_user_allowed_media[] = $media_target_id['target_id'];
+          }
+        }
+      }
+
+      // No more looking in associated parent or school licences; only check individual licences in user profile...
+      // if ($user -> hasRole('child')) {
+      //   // If the child profile has school profile attched to it
+      //   get_linked_media_access($user, 'field_child_school', $current_user_allowed_media, 'child');
+      //
+      //   // If the child profile has parent profile attched to it
+      //   get_linked_media_access($user, 'field_parent', $current_user_allowed_media, 'child');
+      // }
+      // else if ($user -> hasRole('teacher')) {
+      //   // If the teacher profile has school profile attched to it
+      //   get_linked_media_access($user, 'field_teacher_school', $current_user_allowed_media, 'teacher');
+      // }
+
+      // Free access to certain roles
+      $content_access_roles = ['editor', 'manager', 'administrator'];
+
+      // Check user video entity access and allowing few roles to bypass that
+      if (in_array($entity_id, $current_user_allowed_media) || array_intersect($user -> getRoles(), $content_access_roles)) {
+        return AccessResult::allowed();
+      }
+      else {
+        return AccessResult::forbidden();
+      }
+    }
+
+    // Control access for quizzes
+    if (in_array($bundle, ['quiz'])) {
+      $entity_id = $entity->field_quiz_episode->entity->id();
+      $current_user_allowed_media = [];
+
+      if ($user->hasField('field_user_media_access')) {
+        $user_media_list = $user->field_user_media_access->getValue();
+
+        foreach ($user_media_list as $key => $media_target_id) {
+          if (isset($media_target_id['target_id'])) {
+            $current_user_allowed_media[] = $media_target_id['target_id'];
+          }
+        }
+      }
+
+      // Free access to certain roles
+      $content_access_roles = ['editor', 'manager', 'administrator'];
+      if (in_array('guest', $user -> getRoles())) {
+        return AccessResult::forbidden();
+      } else
+      if (in_array($entity_id, $current_user_allowed_media) || array_intersect($user -> getRoles(), $content_access_roles)) {
+        return AccessResult::allowed();
+      }
+      else {
+        //return AccessResult::forbidden();
+      }
+    }
+  }
+
+  return AccessResult::neutral();
+}
+
+/**
+ * Implements hook_user_login().
+ */
+
+function example_custom_user_login($account) {
+  try {
+    // Getting progress node attached to user whose login is being processed
+    $user_progress_query = \Drupal::entityQuery('node');
+    $user_progress_query -> condition('status', 1);
+    $user_progress_query -> condition('type', 'user_progress');
+    $user_progress_query -> condition('field_attached_user', $account -> id());
+    $user_progress_id = $user_progress_query -> execute();
+
+    if (empty($user_progress_id)) {
+      // Create node object with attached file.
+      $progress_uid = $account -> id();
+      $first_name_raw = $account -> get('field_first_name') -> getValue();
+      $first_name = isset($first_name_raw[0]) ? $first_name_raw[0]['value'] : t('No First Name');
+
+      // Creating user progress node if it is not created earlier on login
+      $progress_node = Node::create([
+        'type' => 'user_progress',
+        'title' => t('Progress Userid: :uid Name: :first_name', [':uid' => $progress_uid, ':first_name' => $first_name]),
+        'field_attached_user' => [
+          0 => [
+            'target_id' => $progress_uid,
+          ],
+        ],
+      ]);
+
+      $progress_node -> save();
+
+      $user_progress_id = $progress_node -> id();
+    }
+    else {
+      $temp_array = array_values($user_progress_id);
+      $user_progress_id = isset($temp_array[0]) ? $temp_array[0] : FALSE;
+    }
+
+    // Attaching user progress node to user object for easy access through out login session
+    if ($user_progress_id) {
+      // Store the User progress data in the user.data service object.
+      \Drupal::service('user.data') -> set('example_custom', $account -> id(), 'user_progress_id', $user_progress_id);
+    }
+
+    // Loading list of free videos available (loading everytime as this gets updated regularly)
+    $freebie_db = \Drupal::database();
+
+    $freebie_query = $freebie_db -> select('node','n');
+    $freebie_query -> join('node_field_data', 'nfd', 'nfd.nid = n.nid');
+    $freebie_query -> join('node__field_free_episode', 'nffe', 'nffe.entity_id = n.nid');
+    $freebie_query -> condition('nffe.field_free_episode_value', 1);
+    $freebie_query -> condition('nfd.status', 1);
+    $freebie_query -> fields('n', ['nid']);
+    $freebies = $freebie_query -> execute();
+
+    $order_product_content_access_ids = [];
+
+    while ($freebie = $freebies -> fetchObject()) {
+      $order_product_content_access_ids[]['target_id'] = $freebie -> nid;
+    }
+
+    // Attaching freebies to current user so that they have automatic freebies accees on login
+    if (count($order_product_content_access_ids) > 0) {
+      // getting media access field value
+      $customer_media_access = $account -> get('field_user_media_access') -> getValue();
+      // updating media access raw value
+      $customer_media_access = array_merge($customer_media_access, $order_product_content_access_ids);
+      // removing duplicate ids after merging
+      $customer_media_access_unique = array_map("unserialize", array_unique(array_map("serialize", $customer_media_access)));
+      // updating media access field value
+      $account -> set('field_user_media_access', $customer_media_access_unique);
+      // saving user for permanent change
+      $account -> save();
+
+      // Log to check if user media was successfully updated or not
+      if ($customer_media_access != $customer_media_access_unique) {
+        \Drupal::logger('example_custom') -> info('Freebie has been updated => {Account ID: @acc_id}', [
+          '@acc_id' => $account -> id(),
+        ]);
+      }
+    }
+  }
+  catch (Exception $e) {
+    \Drupal::logger('example_custom') -> error('Freebie has not been updated => {Account ID: @acc_id}, {Message: @message}', [
+      '@acc_id' => $account -> id(),
+      '@message' => serialize($e),
+    ]);
+  }
+}
+
+
+/**
+ * Implements hook_user_load().
+ *
+ * Takes care of restoring user progress data from {users_data}.
+ */
+function example_custom_user_load($accounts) {
+  foreach ($accounts as $account) {
+    $userdata = \Drupal::service('user.data') -> get('example_custom', $account->id(), 'user_progress_id');
+    if (isset($userdata)) {
+      $accounts[$account -> id()] -> user_progress_id = $userdata;
+    }
+  }
+}
+
+/**
+ * Implements hook_ENTITY_TYPE_update().
+ */
+
+function example_custom_commerce_order_update(EntityInterface $entity) {
+  $order_state = $entity -> getState() -> value;
+
+  // Changing video entity access only when order is completed
+  if ($order_state == 'completed') {
+    // Function to update video entity access
+    $order_update_status = update_product_status($entity);
+    $order_id = $entity -> order_id -> value;
+
+    if (($order_update_status['has_episode']['status'] == 1 && $order_update_status['has_episode']['completed'] == 1) || ($order_update_status['has_season']['status'] == 1 && $order_update_status['has_season']['completed'] == 1)) {
+      //Displaying message on successful order completion and provide episode page link
+      $path = '/episodes';
+      $url = Url::fromUri('internal:' . $path);
+      $link = Link::fromTextAndUrl(t('here'), $url);
+      $link = $link -> toRenderable();
+      $link['#attributes'] = ['class' => ['view-episodes']];
+      $output = render($link);
+      drupal_set_message(t('Please visit @link to view your purchases.', ['@link' => $output]));
+    }
+    else if ($order_update_status['has_episode']['status'] == 1 || $order_update_status['has_season']['status'] == 1) {
+      // Error message
+      drupal_set_message(t('There was an error fulfilling delivery of video products. Please note your order id: :order_id and contact site administrator.', [':order_id' => $order_id]), 'error');
+    }
+
+    if ($order_update_status['has_child_account']['status'] == 1 && $order_update_status['has_child_account']['completed'] == 1) {
+      drupal_set_message(t('Updated child account counts for your profile.'));
+    }
+    else if ($order_update_status['has_child_account']['status'] == 1) {
+      drupal_set_message(t('There was an error fulfilling delivery of child account product. Please note your order id: :order_id and contact site administrator.', [':order_id' => $order_id]), 'error');
+    }
+  }
+}
+
+/**
+ * Function to update user content access based on products in the order
+ * @param $order_entity { complete order entity }
+ * @return boolean
+ *   Whether user updating user access successful
+ */
+
+function update_product_status($order_entity) {
+  $order_state = $order_entity -> getState() -> value;
+  $order_customer_id = $order_entity -> getCustomerId();
+  $order_id = $order_entity -> order_id -> value;
+  $order_items = $order_entity -> get('order_items') -> getValue();
+
+  // Check for any injection or post values manipulation
+  if (!is_numeric($order_id) || !is_numeric($order_customer_id) || $order_state == 'draft') {
+    return false;
+  }
+
+  $db = \Drupal::database();
+
+  $order_product_content_access_ids = [];
+
+  // contains update status of each intangible product
+  $order_update_status = [
+    'has_episode' => [
+      'status' => 0,
+      'completed' => 0,
+    ],
+    'has_season' => [
+      'status' => 0,
+      'completed' => 0,
+    ],
+    'has_child_account' => [
+      'status' => 0,
+      'completed' => 0,
+    ],
+  ];
+
+  //Loading customer object to whom this order is attached to
+  $customer = \Drupal\user\Entity\User::load($order_customer_id);
+
+  //Loading using commerce available functions will take at least three subsequent object loads, hence query
+  $query = $db -> select('commerce_order_item','coi');
+  $query -> join('commerce_product_variation_field_data', 'cpvd', 'cpvd.variation_id = coi.purchased_entity');
+  $query -> condition('coi.order_id', $order_id)
+    -> fields('cpvd', ['product_id'])
+    -> fields('coi', ['quantity']);
+
+  $order_product_ids = $query -> execute() -> fetchAll();
+
+  // Traversing through each product entity present in an order and check if it has required purchasables
+  foreach ($order_product_ids as $key => $raw_product) {
+    $product_id = $raw_product -> product_id;
+    $product_quantity = $raw_product -> quantity;
+    $product = \Drupal\commerce_product\Entity\Product::load($product_id); // commerce product API
+    $product_type_raw = $product -> get('type') -> getValue();
+    $product_type = isset($product_type_raw[0]) ? $product_type_raw[0]['target_id'] : 'default';
+
+    // Episode product access
+    if ($product -> hasField('field_episode_media')) {
+      // Updating video access
+      $order_update_status['has_episode']['status'] = 1;
+      $order_product_target_ids = $product -> get('field_episode_media') -> getValue();
+
+      //(Product Episode -> Media ID)
+      foreach ($order_product_target_ids as $key => $target_id) {
+        $order_product_content_access_ids['media'][]['target_id'] = $target_id['target_id'];
+      }
+    }
+
+    // Season product access
+    if ($product -> hasField('field_season_episodes_tags')) {
+      // Updating video season access
+      $order_update_status['has_season']['status'] = 1;
+      $order_product_season_tid = $product -> get('field_season_episodes_tags') -> getValue();
+
+      // Load all media attached to the season bought by user
+      $media = \Drupal::entityTypeManager() -> getStorage('node') -> loadByProperties([
+        'field_season' => $order_product_season_tid[0]['target_id'],
+      ]);
+
+      //(Product Season -> Media IDs)
+      foreach ($media as $key => $single_media) {
+        $order_product_content_access_ids['media'][]['target_id'] = $single_media -> nid -> value;
+      }
+    }
+
+    // Child account product access
+    if ($product_type == 'child_account' && $customer -> hasField('field_child_account_left')) {
+      // Processing child account
+      $order_update_status['has_child_account']['status'] = 1;
+      try {
+        // Loading already bought child account number and adding newly bought and updating
+        $number_of_child_accounts = $customer -> get('field_child_account_left') -> getValue();
+        $product_quantity_int = (int) $product_quantity;
+        $current_child_num = isset($number_of_child_accounts[0]) ? $number_of_child_accounts[0]['value'] : 0;
+        $number_of_child_accounts[0]['value'] = (int) $current_child_num + $product_quantity_int;
+        // updating child accounts counts
+        $customer -> set('field_child_account_left', $number_of_child_accounts);
+
+        // Add parent role to user who bought child accounts
+        if (!$customer -> hasRole('parent')) {
+          $customer -> addRole('parent');
+        }
+
+        // saving user for permanent change
+        $customer -> save();
+
+        $order_update_status['has_child_account']['completed'] = 1;
+      }
+      catch (Exception $e) {
+        // Logging any error to database
+        $order_update_status['has_child_account']['completed'] = 0;
+        \Drupal::logger('example_custom') -> error('Child account access failure => {Order ID: :order_id}, {Message: :message}', [
+          ':order_id' => $order_id,
+          ':message' => serialize($e),
+        ]);
+      }
+    }
+  }
+
+  if ($customer -> hasField('field_user_media_access') && isset($order_product_content_access_ids['media'])) {
+    try {
+      // getting media access field value
+      $customer_media_access = $customer -> get('field_user_media_access') -> getValue();
+      // updating media access raw value
+      $customer_media_access = array_merge($customer_media_access, $order_product_content_access_ids['media']);
+      // removing duplicate ids after merging
+      $customer_media_access_unique = array_map("unserialize", array_unique(array_map("serialize", $customer_media_access)));
+      // updating media access field value
+      $customer -> set('field_user_media_access', $customer_media_access_unique);
+      // saving user for permanent change
+      $customer -> save();
+
+      if ($order_update_status['has_episode']['status'] == 1) {
+        $order_update_status['has_episode']['completed'] = 1;
+      }
+
+      if ($order_update_status['has_season']['status'] == 1) {
+        $order_update_status['has_season']['completed'] = 1;
+      }
+    }
+    catch (Exception $e) {
+      $order_update_status['has_episode']['completed'] = 0;
+      $order_update_status['has_season']['completed'] = 0;
+      \Drupal::logger('example_custom') -> error('User Media access failure => {Order ID: @order_id}, {Message: @message}', [
+        '@order_id' => $order_id,
+        '@message' => serialize($e),
+      ]);
+    }
+  }
+
+  return $order_update_status;
+}
+
+/**
+ * Implements hook_ENTITY_TYPE_insert
+ */
+
+function example_custom_user_insert(Drupal\Core\Entity\EntityInterface $entity) {
+  // Creating user progress node on account creation
+  $progress_uid = $entity -> id();
+
+  $first_name_raw = $entity -> get('field_first_name') -> getValue();
+  $first_name = isset($first_name_raw[0]) ? $first_name_raw[0]['value'] : t('No First Name');
+
+  $progress_node = Node::create([
+    'type' => 'user_progress',
+    'title' => t('Progress Userid: :uid Name: :first_name', [':uid' => $progress_uid, ':first_name' => $first_name]),
+    'field_attached_user' => [
+      0 => [
+        'target_id' => $progress_uid,
+      ],
+    ],
+  ]);
+
+  $progress_node -> save();
+}
+
+/**
+ * Implementation of hook_node_view()
+ *
+ */
+
+function example_custom_node_view(array &$build, \Drupal\Core\Entity\EntityInterface $entity, \Drupal\Core\Entity\Display\EntityViewDisplayInterface $display, $view_mode) {
+
+  // Get current user globally as all the request are related to current user
+  $current_user = \Drupal::entityTypeManager() -> getStorage('user') -> load(\Drupal::currentUser() -> id());
+
+  if ($view_mode == 'full') {
+    // Attaching javascript variable to be used on video pages
+    $build['#attached']['drupalSettings']['example_custom']['currentVideoId'] = $entity -> nid -> getString();
+    $build['#attached']['drupalSettings']['example_custom']['currentVideoProgress'] = 0;
+
+    $user_progress_id = isset($current_user -> user_progress_id) ? $current_user -> user_progress_id : 0;
+    $current_node_bundle = $entity -> bundle();
+
+    if ($user_progress_id > 0 && $current_node_bundle == 'video') {
+      // Attaching current video id to be used in jquery for updating progress
+      $build['#attached']['drupalSettings']['example_custom']['currentNid'] = $entity -> nid -> getString();
+      $user_progress_node = Node::load($user_progress_id);
+      $current_node_id = $entity -> nid -> getString();
+      $watched_videos = $user_progress_node -> get('field_videos_watched') -> getValue();
+
+      foreach ($watched_videos as $key => $watched_video) {
+        $watched_video_settings = \Drupal\field_collection\Entity\FieldCollectionItem::load($watched_video['value']);
+        $watched_video = $watched_video_settings -> get('field_single_video') -> getValue();
+        $watched_video_progress = $watched_video_settings -> get('field_single_video_progress') -> getValue();
+
+        $watched_video_target_id = isset($watched_video[0]['target_id']) ? $watched_video[0]['target_id'] : 0;
+        $watched_video_progress_time = isset($watched_video_progress[0]['value']) ? $watched_video_progress[0]['value'] : 0;
+
+        if ($watched_video_target_id == $current_node_id) {
+          // Attaching current video progress if it is available
+          $build['#attached']['drupalSettings']['example_custom']['currentVideoProgress'] = $watched_video_progress_time;
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Function to calculate EQ stars
+ * params: @type {personal, school, teacher, student}
+ *         @id {user id of school, teacher or student}
+ * @todo - Can be removed if already done using views
+ */
+
+function calculate_eq_stars($type = 'personal', $id = 0, $count = 1) {
+  $current_user = \Drupal::entityTypeManager() -> getStorage('user') -> load(\Drupal::currentUser() -> id());
+  $eq_stars_summary = [
+    'total' => 0,
+    'obtained' => 0,
+    'type' => $type,
+  ];
+
+  switch ($type) {
+    case 'personal' :
+      $user_progress_id = \Drupal::database() -> select('node__field_attached_user', 'fau') -> condition('field_attached_user_target_id', $id) -> fields('fau', ['entity_id']) -> execute() -> fetchField();
+
+      if ($user_progress_id > 0) {
+        $db = \Drupal::database();
+        $query = $db -> select('node__field_completed_quiz_status', 'fcqs');
+        $query -> join('field_collection_item__field_eq_stars_available', 'fesa', 'fesa.entity_id = fcqs.field_completed_quiz_status_value');
+        $query -> join('field_collection_item__field_eq_stars_obtained', 'feso', 'feso.entity_id = fcqs.field_completed_quiz_status_value');
+        $query -> addExpression('sum(fesa.field_eq_stars_available_value)', 'total');
+        $query -> addExpression('sum(feso.field_eq_stars_obtained_value)', 'obtained');
+        $query -> condition('fcqs.entity_id', $user_progress_id);
+
+        $personal_eq_star_summary = $query -> execute() -> fetchObject();
+
+        $eq_stars_summary['total'] = isset($personal_eq_star_summary -> total) ? $personal_eq_star_summary -> total : 0;
+        $eq_stars_summary['obtained'] = isset($personal_eq_star_summary -> obtained) ? $personal_eq_star_summary -> obtained : 0;
+      }
+      break;
+    case 'teacher' :
+      $db = \Drupal::database();
+      $query = $db -> select('profile__field_teacher_school', 'fts');
+      $query -> join('profile', 'p', 'p.profile_id = fts.entity_id');
+      $query -> join('profile__field_child_school', 'fcs', 'fcs.field_child_school_target_id = fts.field_teacher_school_target_id');
+      $query -> join('profile__field_teacher_classrooms', 'ftc', 'ftc.entity_id = p.profile_id');
+      $query -> join('profile__field_child_classroom', 'fcc', 'fcc.field_child_classroom_target_id = ftc.field_teacher_classrooms_target_id');
+      $query -> join('profile', 'p1', 'p1.profile_id = fcc.entity_id');
+      $query -> join('user__roles', 'ur', 'ur.entity_id = p1.uid');
+      $query -> join('node__field_attached_user', 'fau', 'fau.field_attached_user_target_id = p1.uid');
+      $query -> join('node__field_completed_quiz_status', 'fcqs', 'fcqs.entity_id = fau.entity_id');
+      $query -> join('field_collection_item__field_eq_stars_available', 'fesa', 'fesa.entity_id = fcqs.field_completed_quiz_status_value');
+      $query -> join('field_collection_item__field_eq_stars_obtained', 'feso', 'feso.entity_id = fcqs.field_completed_quiz_status_value');
+      $query -> condition('p.uid', $id);
+      $query -> condition('ur.roles_target_id', 'child');
+
+      //Sum of only distinct records
+      $query -> addExpression('sum(fesa.field_eq_stars_available_value)*count(DISTINCT p.uid)/count(*)', 'total');
+      $query -> addExpression('sum(feso.field_eq_stars_obtained_value)*count(DISTINCT p.uid)/count(*)', 'obtained');
+      $teacher_eq_star_summary = $query -> execute() -> fetchObject();
+
+      $eq_stars_summary['total'] = isset($teacher_eq_star_summary -> total) ? (int) $teacher_eq_star_summary -> total : 0;
+      $eq_stars_summary['obtained'] = isset($teacher_eq_star_summary -> obtained) ? (int) $teacher_eq_star_summary -> obtained : 0;
+
+      break;
+
+    case 'school' :
+      $db = \Drupal::database();
+      $query = $db -> select('profile__field_child_school', 'fcs');
+      $query -> join('profile', 'p', 'p.profile_id = fcs.entity_id');
+      $query -> join('user__roles', 'ur', 'ur.entity_id = p.uid');
+      $query -> join('node__field_attached_user', 'fau', 'fau.field_attached_user_target_id = p.uid');
+      $query -> join('node__field_completed_quiz_status', 'fcqs', 'fcqs.entity_id = fau.entity_id');
+      $query -> join('field_collection_item__field_eq_stars_available', 'fesa', 'fesa.entity_id = fcqs.field_completed_quiz_status_value');
+      $query -> join('field_collection_item__field_eq_stars_obtained', 'feso', 'feso.entity_id = fcqs.field_completed_quiz_status_value');
+      $query -> condition('fcs.field_child_school_target_id', $id);
+      $query -> condition('ur.roles_target_id', 'child');
+      $query -> addExpression('sum(fesa.field_eq_stars_available_value)', 'total');
+      $query -> addExpression('sum(feso.field_eq_stars_obtained_value)', 'obtained');
+
+      $school_eq_star_summary = $query -> execute() -> fetchObject();
+
+      $eq_stars_summary['total'] = isset($school_eq_star_summary -> total) ? $school_eq_star_summary -> total : 0;
+      $eq_stars_summary['obtained'] = isset($school_eq_star_summary -> obtained) ? $school_eq_star_summary -> obtained : 0;
+      break;
+  }
+
+  return $eq_stars_summary;
+}
+
+/**
+ * Function to calculate tests average
+ * params: @type {personal, school, teacher, student}
+ *         @id {user id of school, teacher or student}
+ * @todo - Can be removed if already done using views
+ */
+
+function calculate_tests_average($type = 'personal', $id = 0, $school_id = 0) {
+  $current_user = \Drupal::entityTypeManager() -> getStorage('user') -> load(\Drupal::currentUser() -> id());
+  $tests_summary = [
+    'total' => 0,
+    'obtained' => 0,
+    'type' => $type,
+  ];
+
+  switch ($type) {
+    case 'personal' :
+      $db = \Drupal::database();
+      $query = $db -> select('node__field_attached_user', 'fau');
+      $query -> join('node__field_completed_quiz_status', 'fcqs', 'fcqs.entity_id = fau.entity_id');
+      $query -> join('field_collection_item__5318062352', 'fac', 'fac.entity_id = fcqs.field_completed_quiz_status_value');
+      $query -> join('field_collection_item__ca2377997c', 'fmc', 'fmc.entity_id = fcqs.field_completed_quiz_status_value');
+      $query -> condition('fau.field_attached_user_target_id', $id);
+      $query -> addExpression('sum(fac.field_available_correct_options_value)', 'total');
+      $query -> addExpression('sum(fmc.field_marked_correct_options_value)', 'obtained');
+
+      $personal_test_summary = $query -> execute() -> fetchObject();
+      $tests_summary['total'] = isset($personal_test_summary -> total) ? $personal_test_summary -> total : 0;
+      $tests_summary['obtained'] = isset($personal_test_summary -> obtained) ? $personal_test_summary -> obtained : 0;
+      break;
+
+    case 'class' :
+      $class_students_db = \Drupal::database();
+      $class_students_query = $class_students_db -> select('profile__field_child_classroom', 'fcc');
+      $class_students_query -> join('profile', 'p', 'p.profile_id = fcc.entity_id');
+      $class_students_query -> join('profile__field_child_school', 'fcs', 'fcs.entity_id = fcc.entity_id');
+      $class_students_query -> condition('fcc.field_child_classroom_target_id', $id);
+      $class_students_query -> condition('fcs.field_child_school_target_id', $school_id);
+      $class_students_query -> fields('p', ['uid']);
+      $class_students = $class_students_query -> execute() -> fetchAllAssoc('uid');
+      $total_score = 0;
+      $total_score_obtained = 0;
+      foreach ($class_students as $student_uid => $student) {
+        $student_progress = calculate_tests_average('personal', $student_uid);
+        $total_score += $student_progress['total'];
+        $total_score_obtained += $student_progress['obtained'];
+      }
+
+      $tests_summary['total'] = $total_score;
+      $tests_summary['obtained'] = $total_score_obtained;
+
+      break;
+
+    case 'teacher' :
+      $teacher_student_db = \Drupal::database();
+      $teacher_student_query = $teacher_student_db -> select('profile__field_teacher_classrooms', 'ftc');
+      $teacher_student_query -> join('profile', 'p', 'p.profile_id = ftc.entity_id');
+      $teacher_student_query -> join('profile__field_child_classroom', 'fcc', 'fcc.field_child_classroom_target_id = ftc.field_teacher_classrooms_target_id');
+      $teacher_student_query -> join('profile', 'p1', 'p1.profile_id = fcc.entity_id');
+      $teacher_student_query -> join('profile__field_child_school', 'fcs', 'fcs.entity_id = p1.profile_id');
+      $teacher_student_query -> join('user__roles', 'ur', 'ur.entity_id = p1.uid');
+      $teacher_student_query -> condition('ur.roles_target_id', 'child');
+      $teacher_student_query -> condition('p.uid', $id);
+      $teacher_student_query -> condition('fcs.field_child_school_target_id', $school_id);
+      $teacher_student_query -> fields('p1', ['uid']);
+      $teacher_students = $teacher_student_query -> execute() -> fetchAllAssoc('uid');
+
+      $total_score = 0;
+      $total_score_obtained = 0;
+      foreach ($teacher_students as $student_uid => $student) {
+        $student_progress = calculate_tests_average('personal', $student_uid);
+        $total_score += $student_progress['total'];
+        $total_score_obtained += $student_progress['obtained'];
+      }
+
+      $tests_summary['total'] = $total_score;
+      $tests_summary['obtained'] = $total_score_obtained;
+      break;
+
+    case 'school' :
+      $db = \Drupal::database();
+      $query = $db -> select('profile__field_child_school', 'fcs');
+      $query -> join('profile', 'p', 'p.profile_id = fcs.entity_id');
+      $query -> join('user__roles', 'ur', 'ur.entity_id = p.uid');
+      $query -> join('node__field_attached_user', 'fau', 'fau.field_attached_user_target_id = p.uid');
+      $query -> join('node__field_completed_quiz_status', 'fcqs', 'fcqs.entity_id = fau.entity_id');
+      $query -> join('field_collection_item__5318062352', 'fac', 'fac.entity_id = fcqs.field_completed_quiz_status_value');
+      $query -> join('field_collection_item__ca2377997c', 'fmc', 'fmc.entity_id = fcqs.field_completed_quiz_status_value');
+      $query -> condition('fcs.field_child_school_target_id', $id);
+      $query -> condition('ur.roles_target_id', 'child');
+      $query -> addExpression('sum(fac.field_available_correct_options_value)', 'total');
+      $query -> addExpression('sum(fmc.field_marked_correct_options_value)', 'obtained');
+
+      $school_test_summary = $query -> execute() -> fetchObject();
+
+      $tests_summary['total'] = isset($school_test_summary -> total) ? $school_test_summary -> total : 0;
+      $tests_summary['obtained'] = isset($school_test_summary -> obtained) ? $school_test_summary -> obtained : 0;
+      break;
+  }
+
+  return $tests_summary;
+}
+
+/**
+ * Function to calculate completed video & tests
+ * params: @type {personal, school, teacher, student}
+ *         @id {user id of school, teacher or student}
+ * @todo - Can be removed if already done using views
+ */
+
+function calculate_videos_tests($type = 'personal', $id = 0, $school_id = 0) {
+  $current_user = \Drupal::entityTypeManager() -> getStorage('user') -> load(\Drupal::currentUser() -> id());
+
+  $videos_test_summary = [
+    'completed_videos' => 0,
+    'completed_tests' => 0,
+    'type' => $type,
+  ];
+
+  switch ($type) {
+    case 'school' :
+      $total_students_db = \Drupal::database();
+      $total_students_query = $total_students_db -> select('profile__field_child_school', 'fcs');
+      $total_students_query -> addExpression('count(entity_id)', 'total_students');
+      $total_students_query -> condition('field_child_school_target_id', $id);
+      $total_students = $total_students_query -> execute() -> fetchField();
+
+      $school_videos_db = \Drupal::database();
+      $school_videos_query = $school_videos_db -> select('user__field_user_media_access', 'fuma');
+      $school_videos_query -> addExpression('count(entity_id)', 'school_video');
+      $school_videos_query -> condition('entity_id', $id);
+      $school_videos = $school_videos_query -> execute() -> fetchField();
+
+      $total_school_videos = $total_students * $school_videos;
+
+      $student_watched_videos_db = Drupal::database();
+      $student_watched_videos_query = $student_watched_videos_db -> select('profile__field_child_school', 'fcs');
+      $student_watched_videos_query -> join('profile', 'p', 'p.profile_id = fcs.entity_id');
+      $student_watched_videos_query -> join('user__roles', 'ur', 'ur.entity_id = p.uid');
+      $student_watched_videos_query -> join('node__field_attached_user', 'fau', 'fau.field_attached_user_target_id = p.uid');
+      $student_watched_videos_query -> join('node__field_videos_watched', 'fvw', 'fvw.entity_id = fau.entity_id');
+      $student_watched_videos_query -> join('field_collection_item__09f8ad5ee9', 'fcv', 'fcv.entity_id = fvw.field_videos_watched_value');
+      $student_watched_videos_query -> addExpression('count(fcv.entity_id)', 'watched_videos');
+      $student_watched_videos_query -> condition('fcs.field_child_school_target_id', $id);
+      $student_watched_videos_query -> condition('fcv.field_single_video_completed_value', 1);
+      $student_watched_videos_query -> condition('ur.roles_target_id', 'child');
+      $student_watched_videos = $student_watched_videos_query -> execute() -> fetchField();
+
+      $videos_watched = ($total_school_videos > 0 && $student_watched_videos > 0) ? round(($student_watched_videos / $total_school_videos) * 100) : 0;
+
+      $videos_test_summary['completed_videos'] = $videos_watched;
+
+      $school_tests_db = \Drupal::database();
+      $school_tests_query = $school_tests_db -> select('user__field_user_media_access', 'fuma');
+      $school_tests_query -> join('node__field_quiz_episode', 'fqe', 'fqe.field_quiz_episode_target_id = fuma.field_user_media_access_target_id');
+      $school_tests_query -> addExpression('count(fqe.entity_id)', 'school_video');
+      $school_tests_query -> condition('fuma.entity_id', $id);
+      $school_tests = $school_tests_query -> execute() -> fetchField();
+
+      $total_school_tests = $total_students * $school_tests;
+
+      $student_completed_tests_db = Drupal::database();
+      $student_completed_tests_query = $student_completed_tests_db -> select('profile__field_child_school', 'fcs');
+      $student_completed_tests_query -> join('profile', 'p', 'p.profile_id = fcs.entity_id');
+      $student_completed_tests_query -> join('user__roles', 'ur', 'ur.entity_id = p.uid');
+      $student_completed_tests_query -> join('node__field_attached_user', 'fau', 'fau.field_attached_user_target_id = p.uid');
+      $student_completed_tests_query -> join('node__field_completed_quiz_status', 'fcqs', 'fcqs.entity_id = fau.entity_id');
+      $student_completed_tests_query -> addExpression('count(fcqs.field_completed_quiz_status_value)', 'student_tests');
+      $student_completed_tests_query -> condition('fcs.field_child_school_target_id', $id);
+      $student_completed_tests_query -> condition('ur.roles_target_id', 'child');
+      $student_completed_tests = $student_completed_tests_query -> execute() -> fetchField();
+
+      $completed_tests = ($total_school_tests > 0 && $student_completed_tests > 0) ? round(($student_completed_tests / $total_school_tests) * 100) : 0;
+
+      $videos_test_summary['completed_tests'] = $completed_tests;
+      break;
+
+    case 'teacher' :
+      $teacher_total_student_db = \Drupal::database();
+      $teacher_total_student_query = $teacher_total_student_db -> select('profile', 'p');
+      $teacher_total_student_query -> join('profile__field_teacher_classrooms', 'ftc', 'p.profile_id = ftc.entity_id');
+      $teacher_total_student_query -> join('profile__field_child_classroom', 'fcc', 'fcc.field_child_classroom_target_id = ftc.field_teacher_classrooms_target_id');
+      $teacher_total_student_query -> join('profile__field_child_school', 'fcs', 'fcs.entity_id = fcc.entity_id');
+      $teacher_total_student_query -> addExpression('count(fcc.entity_id)', 'total_students');
+      $teacher_total_student_query -> condition('p.uid', $id);
+      $teacher_total_student_query -> condition('fcs.field_child_school_target_id', $school_id);
+      $teacher_total_students = $teacher_total_student_query -> execute() -> fetchField();
+
+      $school_videos_db = \Drupal::database();
+      $school_videos_query = $school_videos_db -> select('user__field_user_media_access', 'fuma');
+      $school_videos_query -> addExpression('count(entity_id)', 'school_video');
+      $school_videos_query -> condition('entity_id', $school_id);
+      $school_videos = $school_videos_query -> execute() -> fetchField();
+
+      $total_teacher_videos = $teacher_total_students * $school_videos;
+
+      $teacher_watched_videos_db = \Drupal::database();
+      $teacher_watched_videos_query = $teacher_watched_videos_db -> select('profile', 'p');
+      $teacher_watched_videos_query -> join('profile__field_teacher_classrooms', 'ftc', 'p.profile_id = ftc.entity_id');
+      $teacher_watched_videos_query -> join('profile__field_child_classroom', 'fcc', 'fcc.field_child_classroom_target_id = ftc.field_teacher_classrooms_target_id');
+      $teacher_watched_videos_query -> join('profile__field_child_school', 'fcs', 'fcs.entity_id = fcc.entity_id');
+      $teacher_watched_videos_query -> join('profile', 'p1', 'p1.profile_id = fcs.entity_id');
+      $teacher_watched_videos_query -> join('user__roles', 'ur', 'ur.entity_id = p1.uid');
+      $teacher_watched_videos_query -> join('node__field_attached_user', 'fau', 'fau.field_attached_user_target_id = p1.uid');
+      $teacher_watched_videos_query -> join('node__field_videos_watched', 'fvw', 'fvw.entity_id = fau.entity_id');
+      $teacher_watched_videos_query -> join('field_collection_item__09f8ad5ee9', 'fcv', 'fcv.entity_id = fvw.field_videos_watched_value');
+      $teacher_watched_videos_query -> addExpression('count(fcv.entity_id)', 'watched_videos');
+      $teacher_watched_videos_query -> condition('fcs.field_child_school_target_id', $school_id);
+      $teacher_watched_videos_query -> condition('p.uid', $id);
+      $teacher_watched_videos_query -> condition('fcv.field_single_video_completed_value', 1);
+      $teacher_watched_videos_query -> condition('ur.roles_target_id', 'child');
+      $teacher_watched_videos = $teacher_watched_videos_query -> execute() -> fetchField();
+
+      $videos_watched = ($total_teacher_videos > 0 && $teacher_watched_videos > 0) ? round(($teacher_watched_videos / $total_teacher_videos) * 100) : 0;
+
+      $videos_test_summary['completed_videos'] = $videos_watched;
+
+      $teacher_tests_db = \Drupal::database();
+      $teacher_tests_query = $teacher_tests_db -> select('profile', 'p');
+      $teacher_tests_query -> join('profile__field_teacher_classrooms', 'ftc', 'p.profile_id = ftc.entity_id');
+      $teacher_tests_query -> join('profile__field_child_classroom', 'fcc', 'fcc.field_child_classroom_target_id = ftc.field_teacher_classrooms_target_id');
+      $teacher_tests_query -> join('profile__field_child_school', 'fcs', 'fcs.entity_id = fcc.entity_id');
+      $teacher_tests_query -> join('user__field_user_media_access', 'fuma', 'fuma.entity_id = fcs.field_child_school_target_id');
+      $teacher_tests_query -> join('node__field_quiz_episode', 'fqe', 'fqe.field_quiz_episode_target_id = fuma.field_user_media_access_target_id');
+      $teacher_tests_query -> addExpression('count(fqe.entity_id)', 'school_video');
+      $teacher_tests_query -> condition('fuma.entity_id', $school_id);
+      $teacher_tests_query -> condition('p.uid', $id);
+      $teacher_tests = $teacher_tests_query -> execute() -> fetchField();
+
+      $total_teacher_tests = $teacher_total_students * $teacher_tests;
+
+      $teacher_completed_tests_db = Drupal::database();
+      $teacher_completed_tests_query = $teacher_completed_tests_db -> select('profile', 'p');
+      $teacher_completed_tests_query -> join('profile__field_teacher_classrooms', 'ftc', 'p.profile_id = ftc.entity_id');
+      $teacher_completed_tests_query -> join('profile__field_child_classroom', 'fcc', 'fcc.field_child_classroom_target_id = ftc.field_teacher_classrooms_target_id');
+      $teacher_completed_tests_query -> join('profile__field_child_school', 'fcs', 'fcs.entity_id = fcc.entity_id');
+      $teacher_completed_tests_query -> join('profile', 'p1', 'p1.profile_id = fcs.entity_id');
+      //$teacher_completed_tests_query -> join('user__roles', 'ur', 'ur.entity_id = p1.uid');
+      $teacher_completed_tests_query -> join('node__field_attached_user', 'fau', 'fau.field_attached_user_target_id = p1.uid');
+      $teacher_completed_tests_query -> join('node__field_completed_quiz_status', 'fcqs', 'fcqs.entity_id = fau.entity_id');
+      $teacher_completed_tests_query -> addExpression('count(fcqs.field_completed_quiz_status_value)', 'student_tests');
+      $teacher_completed_tests_query -> condition('fcs.field_child_school_target_id', $school_id);
+      $teacher_completed_tests_query -> condition('p.uid', $id);
+
+      $teacher_completed_tests = $teacher_completed_tests_query -> execute() -> fetchField();
+
+      $completed_tests = ($total_teacher_tests > 0 && $teacher_completed_tests > 0) ? round(($teacher_completed_tests / $total_teacher_tests) * 100) : 0;
+
+      $videos_test_summary['completed_tests'] = $completed_tests;
+
+      break;
+  }
+
+  return $videos_test_summary;
+}
+
+/**
+ * Function to calculate student summary
+ * params: @student_id
+ * @todo - Can be removed if already done using views
+ */
+
+function calculate_student_summary($student_id) {
+  $student_summary = [
+    'name' => t('No Name'),
+    'eq_stars' => 0,
+    'test_percentage' => 0,
+    'picture' => [],
+  ];
+
+  $eq_star_summary = calculate_eq_stars('personal', $student_id);
+  $tests_summary = calculate_tests_average('personal', $student_id);
+
+  $student_user = \Drupal::entityTypeManager() -> getStorage('user') -> load($student_id);
+  $picture = $student_user -> get('field_picture') -> getValue();
+
+  $student_full_name = '';
+  $first_name = $student_user -> get('field_first_name') -> getValue();
+  $last_name = $student_user -> get('field_last_name') -> getValue();
+  $student_full_name .= isset($first_name[0]) ? $first_name[0]['value'] : $student_full_name;
+  $student_full_name .= isset($last_name[0]) ? ' ' . $last_name[0]['value'] : $student_full_name;
+  $username = $student_user -> name -> value;
+  $student_full_name = (trim($student_full_name) == '') ? $username : $student_full_name;
+
+  $student_summary['name'] = $student_full_name;
+  $student_summary['eq_stars'] = $eq_star_summary['obtained'];
+  $student_summary['test_percentage'] = ($tests_summary['obtained'] > 0 && $tests_summary['total'] > 0) ? round(($tests_summary['obtained'] / $tests_summary['total']) * 100) : 0;
+  $student_summary['picture'] = isset($picture[0]) ? $picture[0] : [];
+
+  return $student_summary;
+}
+
+/**
+ * Funciton to get Real client IP
+ */
+
+function get_client_ip() {
+  if (getenv('HTTP_X_REAL_IP')) {
+    $ip = getenv('HTTP_X_REAL_IP');
+  }
+  else if (getenv('HTTP_X_FORWARDED_FOR')) {
+    $ip = getenv('HTTP_X_FORWARDED_FOR');
+  }
+  else {
+    $ip = $_SERVER['REMOTE_ADDR'];
+  }
+
+  return $ip;
+}
+
+
+/**
+ * Implements hook_computed_field_compute
+ * @return the value to store in the computed field
+ */
+function computed_field_field_score_compute($entity_type_manager, $entity, $fields, $delta) {
+  return (($entity->get('field_available_correct_options')->value == 0) ? 0 : (round($entity->get('field_marked_correct_options')->value*100 / $entity->get('field_available_correct_options')->value)));
+}
+
+/**
+ * Implements hook_computed_field_compute
+ * @return the value to store in the computed field
+ */
+function computed_field_field_eq_stars_score_compute($entity_type_manager, $entity, $fields, $delta) {
+  return (($entity->get('field_eq_stars_available')->value == 0 ) ? 0 :  (round($entity->get('field_eq_stars_obtained')->value*100 / $entity->get('field_eq_stars_available')->value)));
+}
+
+
+/**
+ * Implements hook_form_alter
+ */
+function example_custom_form_views_exposed_form_alter(&$form, \Drupal\Core\Form\FormStateInterface $form_state, $form_id) {
+  // Modify and adapt views exposed filters
+  $view = $form_state->getStorage('view');
+
+  // Filter out classrooms exposed filter according to the user
+  // Could also filter out by view id with ($view['view']->id() == 'progress')
+  if (isset($form['classroom'])) {
+    // Change the '- Any -' text for '- All -'
+    $form['classroom']['#options']['All'] = t('All classrooms');
+
+    // Fetch the allowed classroom values for this user
+    $classrooms_result = views_get_view_result('classrooms', 'entity_reference_from_school_or_teacher_user');
+    $classrooms = [];
+    foreach ($classrooms_result as $classroom_result) {
+      $classrooms[] = $classroom_result->nid;
+    }
+    // Loop through the exposed form values to remove those not allowed for this user
+    foreach ($form['classroom']['#options'] as $key => $value) {
+      if ($key == 'All') continue;
+      if (!in_array($key, $classrooms)) {
+        unset($form['classroom']['#options'][$key]);
+      }
+    }
+  }
+
+  // Filter out seasons exposed filter
+  if (isset($form['season'])) {
+    // Change the '- Any -' text for '- All -'
+    $form['season']['#options']['All'] = t('All seasons');
+
+    // Fetch the allowed seasons values for this user
+    $seasons_result = views_get_view_result('seasons', 'entity_reference_seasons');
+    $seasons = [];
+    foreach ($seasons_result as $season_result) {
+      $seasons[] = $season_result->tid;
+    }
+    // Loop through the exposed form values to remove those not allowed for this user
+    foreach ($form['season']['#options'] as $key => $value) {
+      if ($key == 'All') continue;
+      if (!in_array($key, $seasons)) {
+        unset($form['season']['#options'][$key]);
+      }
+    }
+  }
+
+  // Filter out seasons exposed filter
+  if (isset($form['items_per_page'])) {
+    // Loop through each items per page option and add a description
+    foreach ($form['items_per_page']['#options'] as $key => $value) {
+      $form['items_per_page']['#options'][$key] = t("Show @count per page", ['@count' => $value]);
+    }
+  }
+}
+
+/**
+ * Implements hook_preprocess_HOOK().
+ *
+ * @param $variables
+ */
+function example_custom_preprocess_status_messages(&$variables) {
+  if (isset($variables['message_list']['status'])) {
+    $status_messages = $variables['message_list']['status'];
+
+    foreach($status_messages as $delta => $message) {
+      if (strpos((string) $message, 'has been updated') !== FALSE && strpos((string) $message, 'School') !== FALSE) {
+        // Change status message when school profile has been updated
+        $variables['message_list']['status'][$delta] = t('<em class="placeholder">Your school settings have been saved.</em>');
+      }
+
+      // Change status message when school profile has been created
+      if (strpos((string) $message, 'has been created') !== FALSE && strpos((string) $message, 'School') !== FALSE) {
+        $variables['message_list']['status'][$delta] = t('<em class="placeholder">Your school settings have been created.</em>');
+      }
+    }
+  }
+}
+
+/**
+ * Function to get linked media access
+ * child -> school
+ * teacher -> school
+ * child -> parent
+ */
+
+function get_linked_media_access($user_obj, $link_field, &$current_user_allowed_media, $profile_type) {
+  $profile = \Drupal::entityManager() -> getStorage('profile') -> loadByUser($user_obj, $profile_type);
+
+  if ($profile) {
+    $linked_profile_array = $profile -> get($link_field) -> getValue();
+    $linked_profile_id = !empty($linked_profile_array) ? $linked_profile_array[0]['target_id'] : 0;
+
+    if ($linked_profile_id > 0) {
+      $linked_user = \Drupal::entityTypeManager() -> getStorage('user') -> load($linked_profile_id);
+
+      if ($linked_user -> hasField('field_user_media_access')) {
+        $linked_user_media_list = $linked_user -> field_user_media_access -> getValue();
+
+        foreach ($linked_user_media_list as $key => $media_target_id) {
+          if (isset($media_target_id['target_id'])) {
+            $current_user_allowed_media[] = $media_target_id['target_id'];
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Implementation of hook_menu_local_tasks_alter()
+ */
+
+function example_custom_menu_local_tasks_alter(&$data, $route_name, \Drupal\Core\Cache\RefinableCacheableDependencyInterface &$cacheability) {
+  // Changing user tabs order
+  if (isset($data['tabs'][0])) {
+    if ($route_name == "entity.node.canonical") {
+      $local_tasks_weights = [
+        'entity.node.canonical' => -10,
+        'entity.node.edit_form' => -9,
+        'entity.node.content_access' => -8,
+        'entity.node.delete_form' => -7,
+        'entity.node.version_history' => -6,
+        'content_translation.local_tasks:entity.node.content_translation_overview' => -5,
+        'ds.entities:node.display_tab' => -4,
+      ];
+
+      foreach ($data['tabs'][0] as $key => $tab) {
+        if (isset($local_tasks_weights[$key])) {
+          $data['tabs'][0][$key]['#weight'] = $local_tasks_weights[$key];
+        }
+      }
+    } else if ($route_name == "entity.user.canonical") {
+      $profile_initial_weight = 1000;
+      $user_view_initial_weight = -100;
+
+      foreach ($data['tabs'][0] as $key => $tab) {
+        if (strpos($key, 'entity.profile') !== false) {
+          $data['tabs'][0][$key]['#weight'] = $profile_initial_weight;
+          $profile_initial_weight++;
+        }
+        else if (strpos($key, 'editChildAccounts') !== false) {
+          $data['tabs'][0][$key]['#weight'] = $user_view_initial_weight;
+        }
+        else if (strpos($key, 'entity.user.edit_form') !== false) {
+          $data['tabs'][0][$key]['#link']['title'] = t('Account settings');
+          $data['tabs'][0][$key]['#weight'] = $user_view_initial_weight;
+        }
+        else if (strpos($key, 'entity.user.canonical') !== false) {
+          $data['tabs'][0][$key]['#link']['title'] = t('Account');
+          $data['tabs'][0][$key]['#weight'] = $user_view_initial_weight - 1;
+        }
+        else if (strpos($key, 'commerce_user_orders.order_page') !== false) {
+          $data['tabs'][0][$key]['#weight'] = $user_view_initial_weight + 1;
+        }
+        else if (strpos($key, 'entity.commerce_payment_method') !== false) {
+          $data['tabs'][0][$key]['#weight'] = $user_view_initial_weight + 2;
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Implementation of hook_inline_entity_form_table_fields_alter()
+ */
+
+function example_custom_inline_entity_form_table_fields_alter(&$fields, $context) {
+  //Changing reference list display for required context only (i.e. School Classrooms in this case)
+  if ($context['parent_entity_type'] == 'profile' && $context['parent_bundle'] == 'school' && $context['field_name'] == 'field_classrooms') {
+    unset($fields['label']);
+    unset($fields['status']);
+
+    $fields['title'] = array(
+      'type' => 'field',
+      'label' => t('Name'),
+      'weight' => 1,
+    );
+
+    $fields['field_current_season'] = array(
+      'type' => 'field',
+      'label' => t('Current season study'),
+      'weight' => 2,
+    );
+  }
+}
+
+/**
+ * Implementation of hook_theme()
+ */
+
+function example_custom_theme($existing, $type, $theme, $path) {
+  return [
+    'quiz_form' => [
+      'render element' => 'form',
+    ],
+
+    'child_accounts' => [
+      'variables' => ['child_ids' => NULL],
+    ],
+  ];
+}
+
+/**
+ * Describes callback functions to Views Access Callback.
+ *
+ * This hook should be placed in MODULENAME.module.
+ *
+ * @return
+ *   An associative array describing the callback functions. Primary key is
+ *   the name of the function that should be called to check whether a user
+ *   has access to the view. The value for the key entry is a translated
+ *   string describing the callback function.
+ *
+ * Any arguments passed to the view will also be passed to the callback
+ * function.
+ */
+function example_custom_views_access_callbacks() {
+  $callbacks['example_custom_online_access'] = t('Access to the Example online functions like Quiz, etc');
+  return $callbacks;
+}
+
+function example_custom_online_access() {
+  // Any view arguments are passed into this function.
+  // $views_args = func_get_args();
+  $user = \Drupal::entityTypeManager()->getStorage('user')->load(\Drupal::currentUser()->id());
+
+  // Revoke access to Guest roles
+  if($user and in_array('guest', $user->getRoles())) {
+    return AccessResult::forbidden();
+  } else {
+    return AccessResult::allowed();
+  }
+}
+
+/**
+ * Implements hook_toolbar_alter().
+ * Attach our own css to provide admin icon.
+ */
+function example_custom_toolbar_alter(&$items) {
+  $items['administration']['#attached']['library'][] = 'example_custom/adminmenu';
+}
+
+/**
+ * Function to check if current user has access to other users quiz result
+ */
+
+function get_other_quiz_access_info($current_user, $quiz_user_id) {
+  $user_roles = $current_user -> getRoles(TRUE);
+  $database = \Drupal::database();
+  $child_ids_built = [];
+
+  // Loading list of child accounts attached to a school
+  if (in_array('school', $user_roles)) {
+    $profile = \Drupal::entityManager() -> getStorage('profile') -> loadByUser($current_user, 'school');
+    $profile_id = $profile -> profile_id -> value;
+
+    $child_ids_query = $database -> select('profile__field_child_school', 'fcs');
+    $child_ids_query -> join('profile', 'p', 'p.uid = fcs.field_child_school_target_id');
+    $child_ids_query -> join('profile', 'p1', 'p1.profile_id = fcs.entity_id');
+    $child_ids_query -> condition('p.profile_id', $profile_id);
+    $child_ids_query -> condition('p1.status', 1);
+    $child_ids_query -> fields('p1', ['uid']);
+
+    $child_ids_raw = $child_ids_query -> execute() -> fetchAll();
+
+    foreach ($child_ids_raw as $child_id) {
+      $child_ids_built[] = $child_id -> uid;
+    }
+  }
+  else if (in_array('teacher', $user_roles)) {
+    // Loading list of child accounts attached to a teacher
+    $profile = \Drupal::entityManager() -> getStorage('profile') -> loadByUser($current_user, 'teacher');
+    $profile_id = $profile -> profile_id -> value;
+
+    $child_ids_query = $database -> select('profile__field_classrooms', 'fc');
+    $child_ids_query -> join('profile__field_classroom', 'fcstu', 'fcstu.field_classroom_target_id = fc.field_classrooms_target_id');
+    $child_ids_query -> join('profile', 'p', 'p.profile_id = fcstu.entity_id');
+    $child_ids_query -> condition('fc.entity_id', $profile_id);
+    $child_ids_query -> condition('p.status', 1);
+    $child_ids_query -> fields('p', ['uid']);
+
+    $child_ids_raw = $child_ids_query -> execute() -> fetchAll();
+
+    foreach ($child_ids_raw as $child_id) {
+      $child_ids_built[] = $child_id -> uid;
+    }
+  }
+  else if (in_array('parent', $user_roles)) {
+    $child_ids_query = $current_user -> get('field_children') -> getValue();
+
+    foreach ($child_ids_query as $child_id) {
+      $child_ids_built[] = $child_id['target_id'];
+    }
+  }
+
+  return (in_array($quiz_user_id, $child_ids_built));
+}

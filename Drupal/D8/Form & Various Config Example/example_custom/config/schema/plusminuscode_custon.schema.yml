@@ -1,0 +1,34 @@
+# Schema for the configuration files of the example custom module.
+
+field.formatter.settings.circle_rating:
+  type: mapping
+  label: 'Circle rating display format settings'
+  mapping:
+    size:
+      type: string
+      label: 'The size of the percentage circle'
+    color:
+      type: string
+      label: 'The color theme'
+    center:
+      type: boolean
+      label: 'If the circle is centered in its container'
+field.formatter.settings.star_rating:
+  type: mapping
+  label: 'Star rating display format settings'
+  mapping:
+    size:
+      type: integer
+      label: 'The size of the star in pixels'
+    maxvalue:
+      type: integer
+      label: 'The maximum value of the rating'
+    foreground_color:
+      type: string
+      label: 'Star rating fill color'
+    background_color:
+      type: string
+      label: 'Star unrated fill color'
+    readonly:
+      type: boolean
+      label: 'If true, no mouse hover effect will be shown.'

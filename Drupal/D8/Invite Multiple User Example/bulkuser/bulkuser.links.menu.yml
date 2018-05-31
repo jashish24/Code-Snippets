@@ -1,0 +1,17 @@
+bulkuser.user.create:
+  title: 'Invite Users'
+  parent: entity.user.collection
+  description: 'Bulk create user accounts'
+  route_name: bulkuser.admin.create
+
+bulkuser.user.create_teacher:
+  title: 'Invite Teachers'
+  parent: entity.user.collection
+  description: 'Bulk create teacher accounts'
+  route_name: bulkuser.admin.create_teacher
+  
+bulkuser.user.create_student:
+  title: 'Invite Students'
+  parent: entity.user.collection
+  description: 'Bulk create student accounts'
+  route_name: bulkuser.admin.create_student

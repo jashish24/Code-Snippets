@@ -1,0 +1,6 @@
+bulkuser.tree:
+  js:
+    js/jstz.js: {}
+    js/timezone_detect.js: {}
+  dependencies:
+    - core/jquery

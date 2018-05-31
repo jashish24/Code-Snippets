@@ -1,0 +1,47 @@
+# bulkuser.admin:
+#   path: '/admin/create/bulkuser'
+#   defaults:
+#     _controller: '\Drupal\system\Controller\SystemController::systemAdminMenuBlockPage'
+#     _title: 'Bulk User Creation Form'
+#   requirements:
+#     _permission: 'access administration pages'
+
+bulkuser.admin.create:
+  path: '/admin/create/bulkuser'
+  defaults:
+    _title: 'Invite Users'
+    _form: '\Drupal\bulkuser\Form\BulkUserForm'
+  requirements:
+    _permission: 'administer bulkuser'
+
+bulkuser.admin.create_teacher:
+  path: '/admin/create/bulkuser/teacher'
+  defaults:
+    _title: 'Invite Teachers'
+    _form: '\Drupal\bulkuser\Form\BulkTeacherForm'
+  requirements:
+    _permission: 'create schooluser'
+
+bulkuser.create_teacher:
+  path: '/invite/teacher'
+  defaults:
+    _title: 'Invite Teachers'
+    _form: '\Drupal\bulkuser\Form\BulkTeacherForm'
+  requirements:
+    _permission: 'create schooluser'
+
+bulkuser.admin.create_student:
+  path: '/admin/create/bulkuser/student'
+  defaults:
+    _title: 'Invite Students'
+    _form: '\Drupal\bulkuser\Form\BulkStudentForm'
+  requirements:
+    _permission: 'create schooluser'
+
+bulkuser.create_student:
+  path: '/invite/student'
+  defaults:
+    _title: 'Invite Students'
+    _form: '\Drupal\bulkuser\Form\BulkStudentForm'
+  requirements:
+    _permission: 'create schooluser'

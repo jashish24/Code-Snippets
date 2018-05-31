@@ -1,0 +1,6 @@
+example_custom.adminmenu:
+  title: 'Example'
+  route_name: 'example_custom.adminmenu'
+  parent: 'system.admin'
+  description: 'Administer and configure the Example.'
+  weight: 6

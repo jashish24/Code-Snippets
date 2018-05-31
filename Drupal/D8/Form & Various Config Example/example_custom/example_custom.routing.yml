@@ -1,0 +1,43 @@
+example_custom.adminmenu:
+  path: '/admin/example'
+  defaults:
+    _controller: '\Drupal\system\Controller\SystemController::systemAdminMenuBlockPage'
+    _title: 'Example'
+  requirements:
+    _permission: 'access example administration pages'
+
+example_custom.addchildform:
+  path: '/user/register/child'
+  defaults:
+    _title: 'Add Child'
+    _form: '\Drupal\example_custom\Form\AddChildForm'
+  requirements:
+    _custom_access: '\Drupal\example_custom\Form\AddChildForm::access'
+
+example_custom.submitQuiz:
+  path: '/quiz/generic/callback'
+  defaults:
+    _title: 'Quiz Ajax'
+    _controller: '\Drupal\example_custom\Controller\QuizAjax::changeQuizStatus'
+  requirements:
+    _custom_access: '\Drupal\example_custom\Controller\QuizAjax::access'
+
+example_custom.editChildAccounts:
+  path: '/user/{user}/childaccounts'
+  defaults:
+    _title: 'Child Accounts'
+    _controller: '\Drupal\example_custom\Controller\ChildAccounts::content'
+  options:
+    parameters:
+      entity:
+        user: 'entity:user'
+  requirements:
+    _custom_access: '\Drupal\example_custom\Controller\ChildAccounts::access'
+
+example_custom.downloadCard:
+  path: '/student-card/{userid}'
+  defaults:
+    _title: 'Download Student Card'
+    _controller: '\Drupal\example_custom\Controller\DownloadCard::content'
+  requirements:
+    _custom_access: '\Drupal\example_custom\Controller\DownloadCard::access'

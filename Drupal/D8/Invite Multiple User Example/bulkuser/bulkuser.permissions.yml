@@ -1,0 +1,6 @@
+administer bulkuser:
+  title: 'Use Bulk User'
+  description: 'Invite users to join application.'
+create schooluser:
+  title: 'Invite Student/Teacher'
+  description: 'Invite Students/Teachers to join application.'

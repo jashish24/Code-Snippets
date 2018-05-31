@@ -1,0 +1,36 @@
+<?php
+
+/**
+ * @file
+ * Contains example_custom hook update functions
+ */
+
+/**
+ * Update field_option to have more chars.
+ */
+function example_custom_update_8101(&$sandbox) {
+  $db = \Drupal::database();
+  $field_name = 'field_option';
+  $table_prefixes = [
+    'field_collection_item',
+    'field_collection_item_revision'
+  ];
+  foreach ($table_prefixes as $table_prefix) {
+    $db->schema()->changeField(
+      "{$table_prefix}__{$field_name}",
+      "{$field_name}_value",
+      "{$field_name}_value",
+      [
+        'type' => 'varchar',
+        'length' => 1024,
+        'default' => '',
+      ]
+    );
+  }
+
+  $config = \Drupal::configFactory()->getEditable('field.storage.field_collection_item.' . $field_name);
+  $settings = $config->get('settings');
+  $settings['max_length'] = 1024;
+  $config->set('settings', $settings);
+  $config->save();
+}

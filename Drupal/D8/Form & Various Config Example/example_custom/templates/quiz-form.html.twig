@@ -1,0 +1,27 @@
+{{ form.form_build_id }}
+{{ form.form_token }}
+{{ form.form_id }}
+
+{% if form.quiz_not_taken %}
+  <div class="quiz-nottaken-container>
+    <h3>
+      {{ form.quiz_not_taken }}
+    </h3>
+  </div>
+{% endif %}
+
+{% if form.question_group %}
+  {{ form.question_group }}
+{% endif %}
+
+{% if form.quiz_id %}
+  {{ form.quiz_id }}
+{% endif %}
+
+{% if form.eq_content %}
+  {{ form.eq_content }}
+{% endif %}
+
+{% if form.actions %}
+  {{ form.actions }}
+{% endif %}

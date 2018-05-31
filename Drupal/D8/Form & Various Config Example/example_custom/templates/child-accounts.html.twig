@@ -1,0 +1,14 @@
+<div class="child-accounts-wrapper panel-group" id="accordion">
+  {% for child_id in child_ids %}
+    <div class="panel panel-default">
+      <div class="panel-heading">
+        <h4 class="panel-title">
+          <a data-toggle="collapse" data-parent="#accordion" href="#child-account-{{ child_id.uid }}">{{ child_id.name }}</a>
+        </h4>
+      </div>
+      <div id="child-account-{{ child_id.uid }}" class="panel-collapse collapse">
+        <a title="Download Student Card" href="/student-card/{{ child_id.uid }}">Download Student Card</a>
+      </div>
+    </div>
+  {% endfor %}
+</div>

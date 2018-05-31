@@ -1,0 +1,4 @@
+adminmenu:
+  css:
+    theme:
+      assets/css/example_custom.adminmenu.css: {}

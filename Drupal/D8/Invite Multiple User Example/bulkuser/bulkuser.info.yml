@@ -1,0 +1,4 @@
+name: Bulk User Creation
+description: Create multiple users at once using email addresses or other fields.
+type: module
+core: 8.x

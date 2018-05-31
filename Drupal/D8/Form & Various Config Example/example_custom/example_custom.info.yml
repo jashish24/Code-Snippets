@@ -1,0 +1,9 @@
+name: Example Custom module
+type: module
+description: Custom description
+core: 8.x
+package: Custom
+version: '8.x-1.x'
+
+dependencies:
+  - commerce

@@ -1,0 +1,4 @@
+example_custom.editChildAccounts:
+  route_name: example_custom.editChildAccounts
+  base_route: entity.user.canonical
+  title: Child Accounts

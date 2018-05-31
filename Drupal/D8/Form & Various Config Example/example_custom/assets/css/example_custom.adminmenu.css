@@ -1,0 +1,6 @@
+.toolbar-icon-example-custom-adminmenu:before {
+  background-image: url(../images/example-logo-gray.svg);
+}
+.toolbar-icon-example-custom-adminmenu:hover:before {
+  background-image: url(../images/example-logo-white.svg);
+}
