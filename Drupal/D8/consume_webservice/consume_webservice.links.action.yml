@@ -1,0 +1,23 @@
+consume_webservice.tabs_createcexample:
+  route_name: consume_webservice.createcexample
+  title: 'Create cexample'
+  appears_on:
+    - consume_webservice.listcexamples
+
+consume_webservice.tabs_searcheditcexample:
+  route_name: consume_webservice.searcheditcexample
+  title: 'Search & Edit cexample'
+  appears_on:
+    - consume_webservice.listcexamples
+
+consume_webservice.tabs_createkexample:
+  route_name: consume_webservice.createkexample
+  title: 'Create kexample'
+  appears_on:
+    - consume_webservice.listkexamples
+
+consume_webservice.tabs_searcheditkexample:
+  route_name: consume_webservice.searcheditkexample
+  title: 'Search & Edit kexample'
+  appears_on:
+    - consume_webservice.listkexamples

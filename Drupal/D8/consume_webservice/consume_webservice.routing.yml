@@ -1,0 +1,111 @@
+consume_webservice.settings:
+  path: '/admin/config/search/kexamples-settings'
+  defaults:
+    _form: '\Drupal\consume_webservice\Form\KexamplesSettings'
+    _title: 'kexamples Settings'
+  requirements:
+    _permission: 'administer site configuration'
+
+consume_webservice.listcexamples:
+  path: '/admin/config/search/kexamples-settings/cexamples'
+  defaults:
+    _controller: '\Drupal\consume_webservice\Controller\KexamplesListings::cexamples'
+    _title: 'cexamples List'
+  requirements:
+    _permission: 'administer site configuration'
+
+consume_webservice.listkexamples:
+  path: '/admin/config/search/kexamples-settings/kexamples'
+  defaults:
+    _controller: '\Drupal\consume_webservice\Controller\KexamplesListings::kexamples'
+    _title: 'kexamples List'
+  requirements:
+    _permission: 'administer site configuration'
+
+consume_webservice.updatecexamples:
+  path: '/admin/config/search/kexamples-settings/update-cexample-tree/{cid}'
+  defaults:
+    _form: '\Drupal\consume_webservice\Form\UpdateCexample'
+    _title: 'Link / Unlink cexample'
+  requirements:
+    _permission: 'administer site configuration'
+
+consume_webservice.createcexample:
+  path: '/admin/config/search/kexamples-settings/create-cexample'
+  defaults:
+    _form: '\Drupal\consume_webservice\Form\CreateCexample'
+    _title: 'Create cexample'
+  requirements:
+    _permission: 'administer site configuration'
+
+consume_webservice.editcexample:
+  path: '/admin/config/search/kexamples-settings/edit-cexample/{cid}'
+  defaults:
+    _form: '\Drupal\consume_webservice\Form\EditCexample'
+    _title: 'Edit cexample'
+  requirements:
+    _permission: 'administer site configuration'
+
+consume_webservice.searcheditcexample:
+  path: '/admin/config/search/kexamples-settings/search-edit-cexample'
+  defaults:
+    _form: '\Drupal\consume_webservice\Form\SearchEditCexample'
+    _title: 'Search & Edit cexample'
+  requirements:
+    _permission: 'administer site configuration'
+
+consume_webservice.updatekexamples:
+  path: '/admin/config/search/kexamples-settings/update-kexamples-tree/{kid}'
+  defaults:
+    _form: '\Drupal\consume_webservice\Form\UpdateKexample'
+    _title: 'Link / Unlink kexample'
+  requirements:
+    _permission: 'administer site configuration'
+
+consume_webservice.createkexample:
+  path: '/admin/config/search/kexamples-settings/create-kexample'
+  defaults:
+    _form: '\Drupal\consume_webservice\Form\CreateKexample'
+    _title: 'Create kexample'
+  requirements:
+    _permission: 'administer site configuration'
+
+consume_webservice.editkexample:
+  path: '/admin/config/search/kexamples-settings/edit-kexample/{kid}'
+  defaults:
+    _form: '\Drupal\consume_webservice\Form\EditKexample'
+    _title: 'Edit kexample'
+  requirements:
+    _permission: 'administer site configuration'
+
+consume_webservice.searcheditkexample:
+  path: '/admin/config/search/kexamples-settings/search-edit-kexample'
+  defaults:
+    _form: '\Drupal\consume_webservice\Form\SearchEditKexample'
+    _title: 'Search & Edit kexample'
+  requirements:
+    _permission: 'administer site configuration'
+
+consume_webservice.deletekexample:
+  path: '/admin/config/search/kexamples-settings/delete-kexample/{kid}'
+  defaults:
+    _form: '\Drupal\consume_webservice\Form\DeleteKexample'
+    _title: 'Delete kexample'
+  requirements:
+    _permission: 'administer site configuration'
+
+consume_webservice.search_kexamples:
+  path: '/search-kexamples'
+  defaults:
+    _controller: '\Drupal\consume_webservice\Controller\SearchKexample::getKexamples'
+    _title: 'Search kexamples'
+  requirements:
+    _permission: 'administer site configuration'
+
+consume_webservice.search_cexamples:
+  path: '/search-cexamples'
+  defaults:
+    _controller: '\Drupal\consume_webservice\Controller\SearchKexample::getCexamples'
+    _title: 'Search Cexamples'
+  requirements:
+    _permission: 'administer site configuration'

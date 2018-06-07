@@ -1,0 +1,163 @@
+<?php
+/**
+ * @file
+ * Contains consume_webservice.module.
+ */
+
+
+/**
+ * Implements hook_user_load().
+ *
+ * Takes care of restoring user progress data from {users_data}.
+ */
+function consume_webservice_user_load($accounts) {
+  foreach ($accounts as $account) {
+    $user_kexamples_token = \Drupal::service('user.data') -> get('consume_webservice', $account->id(), 'user_kexamples_token');
+    $user_kexamples_token_time = \Drupal::service('user.data') -> get('consume_webservice', $account->id(), 'user_kexamples_token_time');
+
+    if ($user_kexamples_token) {
+      $accounts[$account -> id()] -> user_kexamples_token = $user_kexamples_token;
+      $accounts[$account -> id()] -> user_kexamples_token_time = $user_kexamples_token_time;
+    }
+  }
+}
+
+/**
+ * Implements hook_user_login().
+ */
+
+function consume_webservice_user_login($account) {
+  if ($account -> hasRole('administrator')) {
+  	$user_kexamples_token = get_consume_webservice_token();
+
+  	if ($user_kexamples_token) {
+  	  // Store the User progress data in the user.data service object.
+  	  \Drupal::service('user.data') -> set('consume_webservice', $account -> id(), 'user_kexamples_token', $user_kexamples_token);
+
+      \Drupal::service('user.data') -> set('consume_webservice', $account -> id(), 'user_kexamples_token_time', time());
+  	}
+  }
+}
+
+/**
+ * Function to make a request to login service and generate token
+ */
+function get_consume_webservice_token() {
+  $user_kexamples_token = false;
+  $consumeks_config = \Drupal::config('consume_webservice.settings');
+  $consumeks_base_service = $consumeks_config -> get('base_service');
+  $consumeks_login = $consumeks_config -> get('login_service');
+  $request_path = $consumeks_base_service . $consumeks_login;
+  $consumeks_token_email = $consumeks_config -> get('token_email');
+  $consumeks_token_password = $consumeks_config -> get('token_password');
+
+  $data = [
+    'email' => $consumeks_token_email,
+    'password' => $consumeks_token_password,
+  ];
+
+  $post_data = json_encode($data);
+  $token_data = perform_webservice_post($request_path, $post_data, 'POST', TRUE);
+
+  if ($token_data) {
+    $user_kexamples_token = $token_data -> data -> token;
+  }
+
+  return $user_kexamples_token;
+}
+
+/**
+ * Function to perform Webservice GET request
+ */
+function perform_webservice_get($request_path = '') {
+  $current_user = \Drupal::entityTypeManager() -> getStorage('user') -> load(\Drupal::currentUser() -> id());
+  $base_service_token = $current_user -> user_kexamples_token;
+  $base_service_token_time = ($current_user -> user_kexamples_token_time == NULL) ? FALSE : $current_user -> user_kexamples_token_time;
+
+  if (!$base_service_token_time || (time() - 43200) > $base_service_token_time) {
+    $base_service_token = renew_token();
+  }
+
+  $ch = curl_init();
+  curl_setopt($ch, CURLOPT_URL, $request_path);
+  curl_setopt($ch, CURLOPT_RETURNTRANSFER, 1);
+  curl_setopt($ch, CURLOPT_HTTPHEADER, [
+      'Content-Type: application/json',
+      'Authorization: ' . $base_service_token,
+    ]
+  );
+
+  $results = curl_exec($ch);
+  $status_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+
+  curl_close($ch);
+
+  if ($status_code == 200) {
+    return json_decode($results);
+  }
+
+  return false;
+}
+
+/**
+ * Function to perform Webservice POST request
+ */
+function perform_webservice_post($request_path = '', $post_data = NULL, $request_method = 'POST', $gen_token = FALSE) {
+  $current_user = \Drupal::entityTypeManager() -> getStorage('user') -> load(\Drupal::currentUser() -> id());
+  $base_service_token = $current_user -> user_kexamples_token;
+  $base_service_token_time = ($current_user -> user_kexamples_token_time == NULL) ? FALSE : $current_user -> user_kexamples_token_time;
+
+  // Checking if token is generated or has timestamp of less that 12hours
+  // not gen_token so that get_consume_webservice_token() does not call renew again which is again calling get_consume_webservice_token() { basically avoiding infinite loop recursion }
+  if ((!$base_service_token_time || (time() - 43200) > $base_service_token_time) && !$gen_token) {
+    $base_service_token = renew_token();
+  }
+
+  $headers = [
+    'Content-Type: application/json',
+    'Content-Length: ' . strlen($post_data),
+  ];
+
+  if (!$gen_token) {
+    $headers[] = 'Authorization: ' . $base_service_token;
+  }
+
+  $ch = curl_init($request_path);
+  curl_setopt($ch, CURLOPT_CUSTOMREQUEST, $request_method);
+  curl_setopt($ch, CURLOPT_POSTFIELDS, $post_data);
+  curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+  curl_setopt($ch, CURLOPT_HTTPHEADER, $headers);
+
+  $results = curl_exec($ch);
+  $status_code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+
+  curl_close($ch);
+
+  if ($status_code == 200) {
+    return json_decode($results);
+  }
+
+  return false;
+}
+
+/**
+ * Function to renew token once it is expired - {current time is 12hours * 60 * 60 seconds}
+ */
+function renew_token() {
+  $account_id = \Drupal::currentUser() -> id();
+  $user_kexamples_token = get_consume_webservice_token();
+
+  if ($user_kexamples_token) {
+    // Store the User progress data in the user.data service object.
+    \Drupal::service('user.data') -> set('consume_webservice', $account_id, 'user_kexamples_token', $user_kexamples_token);
+
+    \Drupal::service('user.data') -> set('consume_webservice', $account_id, 'user_kexamples_token_time', time());
+
+    return $user_kexamples_token;
+  }
+  else {
+    drupal_set_message(t('Error renewing token. Please check webservice settings.'));
+  }
+
+  return false;
+}

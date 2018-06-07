@@ -1,0 +1,17 @@
+consume_webservice.tab_settings:
+  route_name: consume_webservice.settings
+  title: 'Settings'
+  base_route: consume_webservice.settings
+  weight: 1
+
+consume_webservice.tabs_listcexamples:
+  route_name: consume_webservice.listcexamples
+  title: 'cexamples'
+  base_route: consume_webservice.settings
+  weight: 2
+
+consume_webservice.tabs_listkexamples:
+  route_name: consume_webservice.listkexamples
+  title: 'kexamples'
+  base_route: consume_webservice.settings
+  weight: 3

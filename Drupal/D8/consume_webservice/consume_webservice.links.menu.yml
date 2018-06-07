@@ -1,0 +1,6 @@
+consume_webservice.search_settings:
+  title: 'kexamples Setting'
+  parent: system.admin_config_search
+  description: 'Configure kexamples & cexamples here.'
+  route_name: consume_webservice.settings
+  weight: -10
