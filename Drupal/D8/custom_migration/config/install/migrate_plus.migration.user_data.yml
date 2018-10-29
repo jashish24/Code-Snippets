@@ -1,0 +1,81 @@
+id: user_data
+label: Users and associated data.
+migration_group: user_data
+source:
+  plugin: url
+  data_fetcher_plugin: file
+  data_parser_plugin: json
+  urls: /modules/custom/custom_migration/data/user.json
+  ids:
+      _id:
+        type: integer
+  item_selector: 0
+  fields:
+    -
+      name: _id
+      label: '_id'
+      selector: _id
+    -
+      name: isActive
+      label: 'isActive'
+      selector: isActive
+    -
+      name: age
+      label: 'age'
+      selector: age
+    -
+      name: eyeColor
+      label: 'eyeColor'
+      selector: eyeColor
+    -
+      name: name
+      label: 'name'
+      selector: name
+    -
+      name: gender
+      label: 'gender'
+      selector: gender
+    -
+      name: company
+      label: 'company'
+      selector: company
+    -
+      name: email
+      label: 'email'
+      selector: email
+    -
+      name: phone
+      label: 'phone'
+      selector: phone
+    -
+      name: address
+      label: 'address'
+      selector: address
+    -
+      name: about
+      label: 'about'
+      selector: about
+    -
+      name: registered
+      label: 'registered'
+      selector: registered
+destination:
+  plugin: 'entity:user'
+process:
+  name: name
+  mail: email
+  status: isActive
+  field_age: age
+  field_eye_color: eyeColor
+  field_gender: gender
+  field_company: company
+  field_phone: phone
+  field_address: address
+  field_about: about
+  created:
+    plugin: date_timestamp
+    source: registered
+dependencies:
+  enforced:
+    module:
+      - custom_migration

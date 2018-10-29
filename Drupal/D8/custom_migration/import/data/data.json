@@ -1,0 +1,91 @@
+[{
+  "id": 1,
+  "company_name": "Gabvine",
+  "credit_card_number": "3538527100128021",
+  "country_name": "Estonia",
+  "currency": "EUR",
+  "money": 79,
+  "color": "Goldenrod",
+  "user_id": 1
+}, {
+  "id": 2,
+  "company_name": "Dynabox",
+  "credit_card_number": "4917067613457939",
+  "country_name": "Hungary",
+  "currency": "HUF",
+  "money": 78,
+  "color": "Blue",
+  "user_id": 2
+}, {
+  "id": 3,
+  "company_name": "Blognation",
+  "credit_card_number": "3536382248888058",
+  "country_name": "Japan",
+  "currency": "JPY",
+  "money": 65,
+  "color": "Purple",
+  "user_id": 3
+}, {
+  "id": 4,
+  "company_name": "Ainyx",
+  "credit_card_number": "30198505520169",
+  "country_name": "China",
+  "currency": "CNY",
+  "money": 94,
+  "color": "Orange",
+  "user_id": 4
+}, {
+  "id": 5,
+  "company_name": "Skimia",
+  "credit_card_number": "3559474689643845",
+  "country_name": "Greece",
+  "currency": "EUR",
+  "money": 2,
+  "color": "Maroon",
+  "user_id": 5
+}, {
+  "id": 6,
+  "company_name": "Topicware",
+  "credit_card_number": "3570010886431587",
+  "country_name": "Brazil",
+  "currency": "BRL",
+  "money": 9,
+  "color": "Orange",
+  "user_id": 6
+}, {
+  "id": 7,
+  "company_name": "Skinix",
+  "credit_card_number": "633415700360373692",
+  "country_name": "Russia",
+  "currency": "RUB",
+  "money": 92,
+  "color": "Goldenrod",
+  "user_id": 7
+}, {
+  "id": 8,
+  "company_name": "Tagchat",
+  "credit_card_number": "3540460975662971",
+  "country_name": "Honduras",
+  "currency": "HNL",
+  "money": 94,
+  "color": "Purple",
+  "user_id": 8
+}, {
+  "id": 9,
+  "company_name": "Meejo",
+  "credit_card_number": "3572821899521208",
+  "country_name": "Indonesia",
+  "currency": "IDR",
+  "money": 18,
+  "color": "Goldenrod",
+  "user_id": 9
+}, {
+  "id": 10,
+  "company_name": "Tambee",
+  "credit_card_number": "3542084890003125",
+  "country_name": "Nepal",
+  "currency": "NPR",
+  "money": 5,
+  "color": "Aquamarine",
+  "user_id": 10
+}]

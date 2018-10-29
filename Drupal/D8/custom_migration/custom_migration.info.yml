@@ -1,0 +1,14 @@
+# Package info
+name: 'Custom Migration'
+description: Module for performing site-specific migrations.
+type: module
+core: 8.x
+package: Custom
+
+# Dependencies
+dependencies:
+  - migrate
+  - migrate_plus
+  - migrate_tools
+
+configure: hello_world.settings

@@ -1,0 +1,10 @@
+<?php
+
+function custom_migration_migration_plugins_alter(array &$migrations) {
+  foreach ($migrations as $key => $migration) {
+    if ($migrations[$key]['migration_group'] == 'data' || $migrations[$key]['migration_group'] == 'user_data') {
+      $base_url = \Drupal::request()->getSchemeAndHttpHost();
+      $migrations[$key]['source']['urls'] = $base_url . $migrations[$key]['source']['urls'];
+    }
+  }
+}

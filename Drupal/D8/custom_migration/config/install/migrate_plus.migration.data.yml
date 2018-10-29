@@ -1,0 +1,66 @@
+id: data
+label: Companies and associated data.
+migration_group: data
+source:
+  plugin: url
+  data_fetcher_plugin: file
+  data_parser_plugin: json
+  urls: /modules/custom/custom_migration/data/data.json
+  ids:
+      id:
+        type: integer
+  item_selector: 0
+  fields:
+    -
+      name: id
+      label: 'id'
+      selector: id
+    -
+      name: company_name
+      label: 'company_name'
+      selector: company_name
+    -
+      name: credit_card_number
+      label: 'credit_card_number'
+      selector: credit_card_number
+    -
+      name: country_name
+      label: 'country_name'
+      selector: country_name
+    -
+      name: currency
+      label: 'currency'
+      selector: currency
+    -
+      name: money
+      label: 'money'
+      selector: money
+    -
+      name: color
+      label: 'color'
+      selector: color
+    -
+      name: user_id
+      label: 'user_id'
+      selector: user_id
+  constants:
+    bool_0: 0
+    bool_1: 1
+    uid_root: 1
+destination:
+  plugin: 'entity:node'
+  default_bundle: data
+process:
+  title: company_name
+  sticky: constants/bool_0
+  promote: constants/bool_1
+  uid: user_id
+  field_card_number: credit_card_number
+  field_country_name: country_name
+  field_currency: currency
+  field_money: money
+  field_color: color
+dependencies:
+  enforced:
+    module:
+      - custom_migration
