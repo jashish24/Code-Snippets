@@ -1,0 +1,117 @@
+<nodes>
+  <node id="bi-ying" type="internal_page" url="shops/detail/bi-ying">
+    <node-language lang="en">
+      <title>Bi Ying</title>
+      <field name="field_background_stretch">
+        <value>cover</value>
+      </field>
+      <field name="field_color_one">
+        <color>#ffffff</color>
+      </field>
+      <field name="field_color_two">
+        <color>#ffffff</color>
+      </field>
+      <field name="field_internal_page_top">
+        <paragraph type="carousel_kv">
+          <field name="field_carousel_design">
+            <value>2</value>
+          </field>
+          <field name="field_carousel_imgs">
+            <paragraph type="carousel_images">
+              <field name="field_slide_type">
+                <value>image</value>
+              </field>
+              <field name="field_carousel_slides_logo">
+                <value>https://www.images-location/bi_ying.png</value>
+              </field>
+              <field name="field_carousel_image">
+                <value>https://www.images-location/SC_BiYing_1920x480.jpg</value>
+              </field>
+              <field name="field_carousel_mobile_image">
+                <value>https://www.images-location/BiYing_640x500.jpg</value>
+              </field>
+            </paragraph>
+          </field>
+        </paragraph>
+      </field>
+      <field name="field_internal_page_middle">
+        <paragraph type="2_column">
+          <field name="field_column_one">
+            <paragraph type="content">
+              <field name="field_body"><value>&lt;h2&gt;Bi Ying&lt;/h2&gt;</value></field>
+            </paragraph>
+            <paragraph type="content">
+              <field name="field_body"><value>&lt;p&gt;Immerse yourself in a culinary tour of Northern and Southern flavors at this Michelin-recommended restaurant! Bi Ying offers an extensive menu highlighted by provincial favorites such as congee, tasty stir-fried dishes, and an assortment of dim sum made to order in the open kitchen. There is even an open lychee barbecue station for preparing succulent meat and fresh seafood with a distinctive flavor.&lt;/p&gt;</value>
+            </field>
+          </paragraph>
+          <paragraph type="album">
+            <field name="field_css_id"><value /></field>
+            <field name="field_design"><value>1</value></field>
+            <field name="field_album_subtitle"><value /></field>
+            <field name="field_album_title"><value /></field>
+            <field name="field_album_image_container">
+              <paragraph type="album_image">
+                <field name="field_album_image">
+                  <value>https://www.images-location/Gallery/img_gallery_biying-01.jpg</value>
+                </field>
+                <field name="field_album_image_title"><value /></field>
+              </paragraph>
+              <paragraph type="album_image">
+                <field name="field_album_image">
+                  <value>https://www.images-location/Gallery/img_gallery_biying04.jpg</value>
+                </field>
+                <field name="field_album_image_title"><value /></field>
+              </paragraph>
+              <paragraph type="album_image">
+                <field name="field_album_image">
+                  <value>https://www.images-location/biying_photo2.jpg</value>
+                </field>
+                <field name="field_album_image_title"><value /></field>
+              </paragraph>
+              <paragraph type="album_image">
+                <field name="field_album_image">
+                  <value>https://www.images-location/biying_photo4.jpg</value>
+                </field>
+                <field name="field_album_image_title"><value /></field>
+              </paragraph>
+              <paragraph type="album_image">
+                <field name="field_album_image">
+                  <value>https://www.images-location/Gallery/biying-p1_20171218.jpg</value>
+                </field>
+                <field name="field_album_image_title"><value /></field>
+              </paragraph>
+              <paragraph type="album_image">
+                <field name="field_album_image">
+                  <value>https://www.images-location/Gallery/biying-p2_20171218.jpg</value>
+                </field>
+                <field name="field_album_image_title"><value /></field>
+              </paragraph>
+              <paragraph type="album_image">
+                <field name="field_album_image">
+                  <value>https://www.images-location/Gallery/biying-p3_20171218.jpg</value>
+                </field>
+                <field name="field_album_image_title"><value /></field>
+              </paragraph>
+              <paragraph type="album_image">
+                <field name="field_album_image">
+                  <value>https://www.images-location/Gallery/biying-p4_20171218.jpg</value>
+                </field>
+                <field name="field_album_image_title"><value /></field>
+              </paragraph>
+            </field>
+          </paragraph>
+        </field>
+        <field name="field_column_two">
+          <paragraph type="content">
+            <field name="field_body"><value>&lt;div class="enquiresBox"&gt;&lt;p&gt;ENQUIRIES</value>
+            </field>
+          </paragraph>
+        </field>
+        <field name="field_column_designs"><value>column-66-34</value></field>
+      </paragraph>
+    </field>
+    <field name="field_internal_page_description"><value>&lt;p&gt;Immerse yourself in a culinary tour of Northern and Southern flavors at this Michelin-recommended restaurant! Bi Ying offers an extensive menu highlighted by provincial favorites such as congee, tasty stir-fried dishes, and an assortment of dim sum made to order in the open kitchen. There is even an open lychee barbecue station for preparing succulent meat and fresh seafood with a distinctive flavor.&lt;/p&gt;</value></field>
+  </node-language>
+  <node-language lang="tc">...</node-language>
+</node>
+</nodes>
