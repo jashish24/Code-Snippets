@@ -1,0 +1,5 @@
+name: 'XML Content Import'
+type: module
+description: 'This module imports content from XML.'
+package: Site Components
+core: 8.x

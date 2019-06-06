@@ -1,0 +1,22 @@
+<?php
+
+/**
+ * @file
+ * The install file for node import.
+ */
+
+/**
+ * Implements hook_install().
+ */
+function xml_content_import_install() {
+  // Create the xmlimport directory and ensure it's writable.
+  $working_directory = file_default_scheme() . '://xmlimport';
+  $media_directory = file_default_scheme() . '://xmlimport/xmlimport_media';
+  $data_directory = file_default_scheme() . '://xmlimport/xmlimport_data';
+
+  $mode = isset($GLOBALS['install_state']['mode']) ? $GLOBALS['install_state']['mode'] : NULL;
+
+  file_prepare_directory($working_directory, FILE_CREATE_DIRECTORY | FILE_MODIFY_PERMISSIONS, $mode);
+  file_prepare_directory($media_directory, FILE_CREATE_DIRECTORY | FILE_MODIFY_PERMISSIONS, $mode);
+  file_prepare_directory($data_directory, FILE_CREATE_DIRECTORY | FILE_MODIFY_PERMISSIONS, $mode);
+}

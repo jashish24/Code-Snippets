@@ -1,0 +1,7 @@
+xml_content_import.debug_page:
+  path: '/xmlimport-debugpage'
+  defaults:
+    _controller: '\Drupal\xml_content_import\Controller\DebugPage::getContent'
+    _title: 'Xml Import Debugging'
+  requirements:
+    _custom_access: '\Drupal\xml_content_import\Controller\DebugPage::access'

@@ -1,0 +1,4 @@
+working_directory: 'xmlimport'
+media_directory: 'xmlimport_media'
+data_directory: 'xmlimport_data'
+data_file: 'xmlimport_data.xml'

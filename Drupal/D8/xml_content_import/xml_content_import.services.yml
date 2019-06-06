@@ -1,0 +1,4 @@
+services:
+  xml_content_import.importer:
+    class: Drupal\xml_content_import\Services\ImporterService
+    arguments: ['@entity_type.manager', '@entity.manager', '@language_manager', '@current_user', '@config.factory', '@path.alias_storage']
